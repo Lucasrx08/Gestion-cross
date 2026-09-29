@@ -6,6 +6,7 @@ import { Flag, Loader2 } from "lucide-react";
 import { Toaster, toast } from "sonner";
 import { Dashboard } from "@/components/dossard/dashboard";
 import { EventWorkspace } from "@/components/dossard/event-workspace";
+import { RaceStation } from "@/components/dossard/race-station";
 import { deleteEvent, listEvents, listTemplates, saveEvent, saveTemplate } from "@/lib/dossard/storage";
 import type { BibTemplate, RaceEvent } from "@/lib/dossard/types";
 import { useDossardWebMcp } from "@/lib/dossard/webmcp";
@@ -16,10 +17,13 @@ export default function Home() {
   const [templates, setTemplates] = useState<BibTemplate[]>([]);
   const [active, setActive] = useState<RaceEvent>();
   const [loading, setLoading] = useState(true);
+  const [stationCode, setStationCode] = useState("");
   const [saveStatus, setSaveStatus] = useState<"saved" | "saving" | "error">("saved");
   const activeRef = useRef<RaceEvent | undefined>(undefined);
 
   useEffect(() => {
+    const params = new URLSearchParams(window.location.search);
+    setStationCode((params.get("station") ?? "").trim().toUpperCase());
     Promise.all([listEvents(), listTemplates()])
       .then(([loadedEvents, loadedTemplates]) => {
         setEvents(loadedEvents);
@@ -68,6 +72,15 @@ export default function Home() {
     setTemplates((items) => [saved, ...items.filter((item) => item.id !== saved.id)]);
   };
 
+  if (stationCode) {
+    return <><RaceStation stationCode={stationCode} onLeave={() => {
+      const url = new URL(window.location.href);
+      url.searchParams.delete("station");
+      window.history.replaceState({}, "", url.toString());
+      setStationCode("");
+    }} /><Toaster position="bottom-right" richColors closeButton /></>;
+  }
+
   if (loading) {
     return (
       <main className="grid min-h-screen place-items-center text-center">
@@ -97,7 +110,7 @@ export default function Home() {
             <div className="min-w-0 flex-1">
               <p className="truncate text-lg font-black leading-tight text-[#1154b3] sm:text-xl">Bon Sauveur Cross</p>
               <p className="flex items-center gap-1.5 text-sm font-bold text-[#66738b]">
-                <Flag className="size-4 text-[#fed60b]" /> Générateur de dossards
+                <Flag className="size-4 text-[#fed60b]" /> Dossards · Courses · Classements
               </p>
             </div>
             <span className="hidden rounded-full bg-[#fff3a9] px-4 py-2 text-sm font-black text-[#173970] sm:block">Saint-Lô</span>
