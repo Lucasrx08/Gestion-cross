@@ -1,0 +1,6 @@
+import { shortNumber } from "./identifiers";
+import type { LayoutElement, Participant, RaceEvent } from "./types";
+export const previewParticipant: Participant = { id: "preview", sourceRow: 0, bibNumber: 1, technicalId: "COURSE-0001", lastName: "NOM", firstName: "Prénom", className: "Classe", sex: "F", issues: [] };
+export function previewElementValue(element: LayoutElement, p: Participant, event: RaceEvent): string { switch (element.type) { case "number": return shortNumber(p.bibNumber, event.numbering.digits); case "lastName": return p.lastName; case "firstName": return p.firstName; case "fullName": return `${p.lastName.toLocaleUpperCase("fr")} ${p.firstName}`.trim(); case "className": return p.className; case "sex": return p.sex ?? ""; case "freeText": return (element.content ?? "").replaceAll("{{event}}", event.name).replaceAll("{{year}}", String(event.year)).replaceAll("{{lieu}}", event.location); default: return p.technicalId; } }
+export const longestNameParticipant = (items: Participant[]) => [...items].sort((a, b) => `${b.lastName} ${b.firstName}`.length - `${a.lastName} ${a.firstName}`.length)[0];
+export const longestClassParticipant = (items: Participant[]) => [...items].sort((a, b) => b.className.length - a.className.length)[0];
