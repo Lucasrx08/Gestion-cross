@@ -11,24 +11,94 @@ import { Label } from "@/components/ui/label";
 import { createRaceEvent } from "@/lib/dossard/defaults";
 import type { BibTemplate, RaceEvent } from "@/lib/dossard/types";
 
-const initial={name:"",year:new Date().getFullYear(),location:"Saint-Lô",date:""};
-export function Dashboard({events,templates,onCreate,onOpen,onDelete,onJoinCourse}:{events:RaceEvent[];templates:BibTemplate[];onCreate:(event:RaceEvent)=>Promise<void>;onOpen:(event:RaceEvent)=>void;onDelete:(event:RaceEvent)=>Promise<void>;onJoinCourse:(code:string)=>void}){
- const [createOpen,setCreateOpen]=useState(false),[joinOpen,setJoinOpen]=useState(false),[deleteCandidate,setDeleteCandidate]=useState<RaceEvent>();
- const [name,setName]=useState(""),[year,setYear]=useState(initial.year),[location,setLocation]=useState(initial.location),[date,setDate]=useState(""),[joinCode,setJoinCode]=useState("");
- const total=useMemo(()=>events.reduce((s,e)=>s+e.participants.length,0),[events]);
- const reset=()=>{setName("");setYear(initial.year);setLocation(initial.location);setDate("")};
- return <main className="mx-auto w-full max-w-[1500px] px-4 py-6 sm:px-6 lg:px-10 lg:py-9">
-  <section className="race-band race-card relative overflow-hidden rounded-[2rem] px-6 py-9 text-white sm:px-10 lg:px-12 lg:py-12">
-   <div className="race-grid absolute inset-0 opacity-20"/><div className="absolute -right-16 -top-20 size-72 rounded-full border-[46px] border-[#fed60b]/90 opacity-80"/>
-   <div className="relative max-w-4xl"><p className="text-sm font-black uppercase tracking-[.24em] text-[#fed60b]">Gestion Cross</p><h1 className="mt-2 text-3xl font-black tracking-tight sm:text-5xl">Tout votre cross, du dossard au classement.</h1><p className="mt-4 max-w-3xl text-base leading-relaxed text-blue-100 sm:text-lg">Importez les participants, créez les dossards, gérez les arrivées sur plusieurs postes et publiez vos résultats individuels ou interclasses.</p><div className="mt-7 flex flex-wrap gap-3"><Button size="lg" className="bg-[#fed60b] font-black text-[#102347] hover:bg-[#ffe45b]" onClick={()=>setCreateOpen(true)}><Plus/>Créer un cross</Button><Button size="lg" variant="outline" className="border-white/40 bg-white/10 font-black text-white hover:bg-white/20 hover:text-white" onClick={()=>setJoinOpen(true)}><QrCode/>Rejoindre une course</Button></div></div>
-  </section>
-  <section className="mt-5 grid grid-cols-2 gap-3 lg:grid-cols-3">{[{label:"Cross",value:events.length,icon:Flag},{label:"Participants",value:total,icon:Users},{label:"Modèles de dossard",value:templates.length,icon:QrCode}].map(s=><article key={s.label} className="race-card rounded-2xl border border-white bg-white p-4 sm:p-5"><div className="flex items-center justify-between"><p className="text-sm font-bold text-[#65738e]">{s.label}</p><span className="grid size-9 place-items-center rounded-xl bg-[#eaf2ff] text-[#1154b3]"><s.icon className="size-5"/></span></div><p className="mt-2 text-3xl font-black text-[#102347]">{s.value}</p></article>)}</section>
-  <section className="mt-7"><div className="mb-4 flex items-end justify-between"><div><p className="text-xs font-black uppercase tracking-widest text-[#1154b3]">Organisation</p><h2 className="text-2xl font-black">Mes cross</h2></div>{events.length>0&&<Button onClick={()=>setCreateOpen(true)}><Plus/>Nouveau cross</Button>}</div>
-   {!events.length?<div className="race-surface rounded-[1.7rem] border border-blue-100 p-10 text-center"><Flag className="mx-auto size-12 text-[#1154b3]"/><h3 className="mt-3 text-xl font-black">Créez votre premier cross</h3><p className="mt-1 text-[#65738e]">L’application vous accompagne ensuite pour les participants, les dossards, les courses et les résultats.</p></div>:<div className="grid gap-4 md:grid-cols-2 xl:grid-cols-3">{events.map(event=><article key={event.id} className="race-card relative overflow-hidden rounded-[1.6rem] border border-blue-100 bg-white p-5"><div className="absolute inset-x-0 top-0 h-1.5 bg-gradient-to-r from-[#fed60b] to-[#1154b3]"/><div className="flex justify-between gap-3"><div><Badge className="bg-[#fff3a9] text-[#173970]">{event.year}</Badge><h3 className="mt-3 text-xl font-black">{event.name}</h3></div><Button size="icon-sm" variant="ghost" className="text-slate-400 hover:text-red-600" onClick={()=>setDeleteCandidate(event)}><Trash2/></Button></div><div className="mt-4 space-y-2 text-sm text-[#65738e]"><p className="flex gap-2"><Users className="text-[#1154b3]"/>{event.participants.length} participant(s)</p><p className="flex gap-2"><CalendarDays className="text-[#1154b3]"/>{event.date?new Date(event.date+"T12:00:00").toLocaleDateString("fr-FR",{dateStyle:"long"}):"Date à préciser"}</p><p className="flex gap-2"><MapPin className="text-[#1154b3]"/>{event.location||"Lieu à préciser"}</p></div><Button className="mt-5 w-full justify-between font-bold" onClick={()=>onOpen(event)}>Gérer ce cross <ChevronRight/></Button></article>)}</div>}
-  </section>
-  <footer className="mt-10 border-t border-blue-100 py-6 text-center text-xs font-bold text-[#7b879c]">Gestion Cross · Créé par L. RIGAUX</footer>
-  <Dialog open={createOpen} onOpenChange={o=>{setCreateOpen(o);if(!o)reset()}}><DialogContent className="sm:max-w-xl"><DialogHeader><DialogTitle>Créer un cross</DialogTitle><DialogDescription>Créez l’événement général. Les courses seront ajoutées ensuite.</DialogDescription></DialogHeader><div className="grid gap-4 sm:grid-cols-2"><div className="sm:col-span-2"><Label>Nom *</Label><Input value={name} placeholder="Ex. Cross du Bon Sauveur" onChange={e=>setName(e.target.value)}/></div><div><Label>Année</Label><Input type="number" value={year} onChange={e=>setYear(Number(e.target.value))}/></div><div><Label>Date</Label><Input type="date" value={date} onChange={e=>setDate(e.target.value)}/></div><div className="sm:col-span-2"><Label>Lieu</Label><Input value={location} onChange={e=>setLocation(e.target.value)}/></div></div><DialogFooter><Button variant="outline" onClick={()=>setCreateOpen(false)}>Annuler</Button><Button disabled={!name.trim()} onClick={async()=>{await onCreate(createRaceEvent({name,year,location,date}));setCreateOpen(false);reset()}}>Créer le cross</Button></DialogFooter></DialogContent></Dialog>
-  <Dialog open={joinOpen} onOpenChange={setJoinOpen}><DialogContent className="sm:max-w-md"><DialogHeader><DialogTitle>Rejoindre une course</DialogTitle><DialogDescription>Saisissez le code affiché par l’organisateur. Fonctionne sur PC, Mac, iPad ou téléphone.</DialogDescription></DialogHeader><div><Label>Code de course</Label><Input autoFocus value={joinCode} onChange={e=>setJoinCode(e.target.value.toUpperCase())} onKeyDown={e=>{if(e.key==="Enter"&&joinCode.trim()){onJoinCourse(joinCode.trim());setJoinOpen(false)}}} className="mt-2 h-14 text-center font-mono text-2xl font-black uppercase" placeholder="AB12CD34"/></div><DialogFooter><Button className="w-full" disabled={joinCode.trim().length<6} onClick={()=>{onJoinCourse(joinCode.trim());setJoinOpen(false)}}>Ouvrir le poste d’arrivée</Button></DialogFooter></DialogContent></Dialog>
-  <AlertDialog open={Boolean(deleteCandidate)} onOpenChange={o=>!o&&setDeleteCandidate(undefined)}><AlertDialogContent><AlertDialogHeader><AlertDialogTitle>Supprimer ce cross ?</AlertDialogTitle><AlertDialogDescription>« {deleteCandidate?.name} » et ses données locales seront supprimés.</AlertDialogDescription></AlertDialogHeader><AlertDialogFooter><AlertDialogCancel>Annuler</AlertDialogCancel><AlertDialogAction className="bg-red-600" onClick={async()=>{if(deleteCandidate){await onDelete(deleteCandidate);setDeleteCandidate(undefined)}}}>Supprimer</AlertDialogAction></AlertDialogFooter></AlertDialogContent></AlertDialog>
- </main>;
+const initial = { name: "", year: new Date().getFullYear(), location: "Saint-Lô", date: "" };
+
+export function Dashboard({ events, templates, onCreate, onOpen, onDelete, onJoinCourse }: {
+  events: RaceEvent[];
+  templates: BibTemplate[];
+  onCreate: (event: RaceEvent) => Promise<void>;
+  onOpen: (event: RaceEvent) => void;
+  onDelete: (event: RaceEvent) => Promise<void>;
+  onJoinCourse: (code: string) => void;
+}) {
+  const [createOpen, setCreateOpen] = useState(false);
+  const [joinOpen, setJoinOpen] = useState(false);
+  const [deleteCandidate, setDeleteCandidate] = useState<RaceEvent>();
+  const [name, setName] = useState("");
+  const [year, setYear] = useState(initial.year);
+  const [location, setLocation] = useState(initial.location);
+  const [date, setDate] = useState("");
+  const [joinCode, setJoinCode] = useState("");
+  const total = useMemo(() => events.reduce((sum, event) => sum + event.participants.length, 0), [events]);
+  const reset = () => { setName(""); setYear(initial.year); setLocation(initial.location); setDate(""); };
+  const cleanJoinCode = (value: string) => value.replace(/\D/g, "").slice(0, 6);
+  const openJoinedCourse = () => {
+    if (joinCode.length !== 6) return;
+    onJoinCourse(joinCode);
+    setJoinOpen(false);
+    setJoinCode("");
+  };
+
+  return (
+    <main className="mx-auto w-full max-w-[1500px] px-4 py-6 sm:px-6 lg:px-10 lg:py-9">
+      <section className="race-band race-card relative overflow-hidden rounded-[2rem] px-6 py-9 text-white sm:px-10 lg:px-12 lg:py-12">
+        <div className="race-grid absolute inset-0 opacity-20" />
+        <div className="absolute -right-16 -top-20 size-72 rounded-full border-[46px] border-[#fed60b]/90 opacity-80" />
+        <div className="relative max-w-4xl">
+          <p className="text-sm font-black uppercase tracking-[.24em] text-[#fed60b]">Gestion Cross</p>
+          <h1 className="mt-2 text-3xl font-black tracking-tight sm:text-5xl">Tout votre cross, du dossard au classement.</h1>
+          <p className="mt-4 max-w-3xl text-base leading-relaxed text-blue-100 sm:text-lg">Importez les participants, créez les dossards, gérez les arrivées sur plusieurs postes et publiez vos résultats individuels ou interclasses.</p>
+          <div className="mt-7 flex flex-wrap gap-3">
+            <Button size="lg" className="bg-[#fed60b] font-black text-[#102347] hover:bg-[#ffe45b]" onClick={() => setCreateOpen(true)}><Plus />Créer un cross</Button>
+            <Button size="lg" variant="outline" className="border-white/40 bg-white/10 font-black text-white hover:bg-white/20 hover:text-white" onClick={() => setJoinOpen(true)}><QrCode />Rejoindre une course</Button>
+          </div>
+        </div>
+      </section>
+
+      <section className="mt-5 grid grid-cols-2 gap-3 lg:grid-cols-3">
+        {[{ label: "Cross", value: events.length, icon: Flag }, { label: "Participants", value: total, icon: Users }, { label: "Modèles de dossard", value: templates.length, icon: QrCode }].map((stat) => (
+          <article key={stat.label} className="race-card rounded-2xl border border-white bg-white p-4 sm:p-5">
+            <div className="flex items-center justify-between"><p className="text-sm font-bold text-[#65738e]">{stat.label}</p><span className="grid size-9 place-items-center rounded-xl bg-[#eaf2ff] text-[#1154b3]"><stat.icon className="size-5" /></span></div>
+            <p className="mt-2 text-3xl font-black text-[#102347]">{stat.value}</p>
+          </article>
+        ))}
+      </section>
+
+      <section className="mt-7">
+        <div className="mb-4 flex items-end justify-between"><div><p className="text-xs font-black uppercase tracking-widest text-[#1154b3]">Organisation</p><h2 className="text-2xl font-black">Mes cross</h2></div>{events.length > 0 && <Button onClick={() => setCreateOpen(true)}><Plus />Nouveau cross</Button>}</div>
+        {!events.length ? (
+          <div className="race-surface rounded-[1.7rem] border border-blue-100 p-10 text-center"><Flag className="mx-auto size-12 text-[#1154b3]" /><h3 className="mt-3 text-xl font-black">Créez votre premier cross</h3><p className="mt-1 text-[#65738e]">L’application vous accompagne ensuite pour les participants, les dossards, les courses et les résultats.</p></div>
+        ) : (
+          <div className="grid gap-4 md:grid-cols-2 xl:grid-cols-3">
+            {events.map((event) => (
+              <article key={event.id} className="race-card relative overflow-hidden rounded-[1.6rem] border border-blue-100 bg-white p-5">
+                <div className="absolute inset-x-0 top-0 h-1.5 bg-gradient-to-r from-[#fed60b] to-[#1154b3]" />
+                <div className="flex justify-between gap-3"><div><Badge className="bg-[#fff3a9] text-[#173970]">{event.year}</Badge><h3 className="mt-3 text-xl font-black">{event.name}</h3></div><Button size="icon-sm" variant="ghost" className="text-slate-400 hover:text-red-600" onClick={() => setDeleteCandidate(event)}><Trash2 /></Button></div>
+                <div className="mt-4 space-y-2 text-sm text-[#65738e]"><p className="flex gap-2"><Users className="text-[#1154b3]" />{event.participants.length} participant(s)</p><p className="flex gap-2"><CalendarDays className="text-[#1154b3]" />{event.date ? new Date(event.date + "T12:00:00").toLocaleDateString("fr-FR", { dateStyle: "long" }) : "Date à préciser"}</p><p className="flex gap-2"><MapPin className="text-[#1154b3]" />{event.location || "Lieu à préciser"}</p></div>
+                <Button className="mt-5 w-full justify-between font-bold" onClick={() => onOpen(event)}>Gérer ce cross <ChevronRight /></Button>
+              </article>
+            ))}
+          </div>
+        )}
+      </section>
+
+      <footer className="mt-10 border-t border-blue-100 py-6 text-center text-xs font-bold text-[#7b879c]">Gestion Cross · Créé par L. RIGAUX</footer>
+
+      <Dialog open={createOpen} onOpenChange={(open) => { setCreateOpen(open); if (!open) reset(); }}>
+        <DialogContent className="sm:max-w-xl"><DialogHeader><DialogTitle>Créer un cross</DialogTitle><DialogDescription>Créez l’événement général. Les courses seront ajoutées ensuite.</DialogDescription></DialogHeader><div className="grid gap-4 sm:grid-cols-2"><div className="sm:col-span-2"><Label>Nom *</Label><Input value={name} placeholder="Ex. Cross du Bon Sauveur" onChange={(event) => setName(event.target.value)} /></div><div><Label>Année</Label><Input type="number" value={year} onChange={(event) => setYear(Number(event.target.value))} /></div><div><Label>Date</Label><Input type="date" value={date} onChange={(event) => setDate(event.target.value)} /></div><div className="sm:col-span-2"><Label>Lieu</Label><Input value={location} onChange={(event) => setLocation(event.target.value)} /></div></div><DialogFooter><Button variant="outline" onClick={() => setCreateOpen(false)}>Annuler</Button><Button disabled={!name.trim()} onClick={async () => { await onCreate(createRaceEvent({ name, year, location, date })); setCreateOpen(false); reset(); }}>Créer le cross</Button></DialogFooter></DialogContent>
+      </Dialog>
+
+      <Dialog open={joinOpen} onOpenChange={(open) => { setJoinOpen(open); if (!open) setJoinCode(""); }}>
+        <DialogContent className="sm:max-w-md">
+          <DialogHeader><DialogTitle>Rejoindre une course</DialogTitle><DialogDescription>Saisissez le code à 6 chiffres affiché par l’organisateur. Fonctionne sur PC, Mac, iPad ou téléphone.</DialogDescription></DialogHeader>
+          <div><Label>Code de course</Label><Input autoFocus value={joinCode} onChange={(event) => setJoinCode(cleanJoinCode(event.target.value))} onKeyDown={(event) => { if (event.key === "Enter") openJoinedCourse(); }} className="mt-2 h-16 text-center font-mono text-3xl font-black tracking-[0.28em]" placeholder="482731" inputMode="numeric" pattern="[0-9]*" maxLength={6} /></div>
+          <DialogFooter><Button className="w-full" disabled={joinCode.length !== 6} onClick={openJoinedCourse}>Ouvrir le poste d’arrivée</Button></DialogFooter>
+        </DialogContent>
+      </Dialog>
+
+      <AlertDialog open={Boolean(deleteCandidate)} onOpenChange={(open) => !open && setDeleteCandidate(undefined)}>
+        <AlertDialogContent><AlertDialogHeader><AlertDialogTitle>Supprimer ce cross ?</AlertDialogTitle><AlertDialogDescription>« {deleteCandidate?.name} » et ses données locales seront supprimés.</AlertDialogDescription></AlertDialogHeader><AlertDialogFooter><AlertDialogCancel>Annuler</AlertDialogCancel><AlertDialogAction className="bg-red-600" onClick={async () => { if (deleteCandidate) { await onDelete(deleteCandidate); setDeleteCandidate(undefined); } }}>Supprimer</AlertDialogAction></AlertDialogFooter></AlertDialogContent>
+      </AlertDialog>
+    </main>
+  );
 }
