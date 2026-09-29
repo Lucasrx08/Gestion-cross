@@ -67,6 +67,7 @@ export function EventWorkspace({
 }) {
   const [step, setStep] = useState<Step>("participants");
   const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set());
+  const [participantIssueFilter, setParticipantIssueFilter] = useState<"all" | "errors" | "warnings">("all");
   const [singleId, setSingleId] = useState<string>();
   const [purgeOpen, setPurgeOpen] = useState(false);
   const current = steps.findIndex((item) => item.value === step);
@@ -122,10 +123,10 @@ export function EventWorkspace({
             </TabsList>
           </div>
 
-          <TabsContent value="participants"><ParticipantsStep event={event} onChange={onChange} selectedIds={selectedIds} onSelectedIdsChange={setSelectedIds} onReprint={(id) => { setSingleId(id); setStep("export"); }} /></TabsContent>
+          <TabsContent value="participants"><ParticipantsStep event={event} onChange={onChange} selectedIds={selectedIds} onSelectedIdsChange={setSelectedIds} onReprint={(id) => { setSingleId(id); setStep("export"); }} issueFilter={participantIssueFilter} onIssueFilterChange={setParticipantIssueFilter} /></TabsContent>
           <TabsContent value="template"><TemplateStep event={event} templates={templates} onChange={onChange} onSaveTemplate={onSaveTemplate} /></TabsContent>
           <TabsContent value="layout"><LayoutStep event={event} onChange={onChange} onSaveTemplate={onSaveTemplate} /></TabsContent>
-          <TabsContent value="verify"><VerificationStep event={event} onContinue={() => setStep("export")} /></TabsContent>
+          <TabsContent value="verify"><VerificationStep event={event} onContinue={() => setStep("export")} onReviewErrors={() => { setParticipantIssueFilter("errors"); setStep("participants"); }} /></TabsContent>
           <TabsContent value="export"><ExportStep key={singleId ?? "general"} event={event} selectedIds={selectedIds} initialSingleId={singleId} /></TabsContent>
         </Tabs>
 

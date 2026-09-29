@@ -6,7 +6,7 @@ import { PDFDocument } from "pdf-lib";
 import { createRaceEvent } from "../lib/dossard/defaults";
 import { barcodeGeometry, verifyCode128 } from "../lib/dossard/barcode";
 import { importParticipants, mappingIsValid, readParticipantFile } from "../lib/dossard/import";
-import { createLocalId, technicalId } from "../lib/dossard/identifiers";
+import { createLocalId, normalizeScannedIdentifier, technicalId } from "../lib/dossard/identifiers";
 import { generateBibPdf } from "../lib/dossard/pdf";
 import { validateParticipants } from "../lib/dossard/validation";
 import type { BackgroundAsset, Participant } from "../lib/dossard/types";
@@ -67,6 +67,9 @@ async function pdfTest(count: number, asset?: BackgroundAsset) {
 }
 
 await importTests();
+assert.equal(normalizeScannedIdentifier("RR§001"), "RR-001");
+assert.equal(normalizeScannedIdentifier(" rr–001\n"), "RR-001");
+console.log("✓ normalisation des scans de douchette");
 const png = await background(new URL("../public/logo-bon-sauveur-cross.png", import.meta.url).pathname, "image/png");
 const jpegBytes = Buffer.from("/9j/4AAQSkZJRgABAQAAAAAAAAD/2wBDAAMCAgICAgMCAgIDAwMDBAYEBAQEBAgGBgUGCQgKCgkICQkKDA8MCgsOCwkJDRENDg8QEBEQCgwSExIQEw8QEBD/2wBDAQMDAwQDBAgEBAgQCwkLEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBD/wAARCAAOABQDAREAAhEBAxEB/8QAFgABAQEAAAAAAAAAAAAAAAAAAAcJ/8QAGhAAAQUBAAAAAAAAAAAAAAAAAAMVFmJjof/EABgBAQADAQAAAAAAAAAAAAAAAAAFBgcI/8QAGxEAAQQDAAAAAAAAAAAAAAAAAAIDFmEUFWL/2gAMAwEAAhEDEQA/ANLZJp0zGZdE1rqEk06Jl0NdQkmnRMuhrqJc+L2OVpO9ZesFIfF7CTvWMFIfF7CTvWMFJ//Z", "base64");
 const jpeg: BackgroundAsset = { fileName: "fond-test.jpg", mimeType: "image/jpeg", dataUrl: `data:image/jpeg;base64,${jpegBytes.toString("base64")}`, widthPx: 2480, heightPx: 1748, sizeBytes: jpegBytes.length };
