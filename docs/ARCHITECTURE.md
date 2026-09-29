@@ -27,7 +27,7 @@ Les coordonnées sont stockées en millimètres. Le moteur compose deux dossards
 ## V1
 
 - événements locaux ; import PNG/JPEG, XLSX/XLS/CSV ; correspondance des colonnes nom, prénom, classe et sexe ;
-- validation, recherche, édition et suppression ; numérotation configurable ;
+- validation, recherche, édition et suppression ; numérotation configurable, avec préfixe facultatif ;
 - éditeur A5 avec grille, magnétisme, texte, Code 128 et QR ;
 - vérification, test douchette, PDF A4 complet/par classe/plage/sélection/unitaire ;
 - export CSV/XLSX ; modèles réutilisables ; suppression des données nominatives.

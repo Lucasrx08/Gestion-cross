@@ -69,6 +69,8 @@ async function pdfTest(count: number, asset?: BackgroundAsset) {
 await importTests();
 assert.equal(normalizeScannedIdentifier("RR§001"), "RR-001");
 assert.equal(normalizeScannedIdentifier(" rr–001\n"), "RR-001");
+assert.equal(technicalId({ prefix: "", start: 1, digits: 4 }, 1), "0001");
+assert.equal(technicalId({ prefix: "RR", start: 1, digits: 4 }, 1), "RR-0001");
 console.log("✓ normalisation des scans de douchette");
 const png = await background(new URL("../public/logo-bon-sauveur-cross.png", import.meta.url).pathname, "image/png");
 const jpegBytes = Buffer.from("/9j/4AAQSkZJRgABAQAAAAAAAAD/2wBDAAMCAgICAgMCAgIDAwMDBAYEBAQEBAgGBgUGCQgKCgkICQkKDA8MCgsOCwkJDRENDg8QEBEQCgwSExIQEw8QEBD/2wBDAQMDAwQDBAgEBAgQCwkLEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBD/wAARCAAOABQDAREAAhEBAxEB/8QAFgABAQEAAAAAAAAAAAAAAAAAAAcJ/8QAGhAAAQUBAAAAAAAAAAAAAAAAAAMVFmJjof/EABgBAQADAQAAAAAAAAAAAAAAAAAFBgcI/8QAGxEAAQQDAAAAAAAAAAAAAAAAAAIDFmEUFWL/2gAMAwEAAhEDEQA/ANLZJp0zGZdE1rqEk06Jl0NdQkmnRMuhrqJc+L2OVpO9ZesFIfF7CTvWMFIfF7CTvWMFJ//Z", "base64");
