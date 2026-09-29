@@ -7,6 +7,7 @@ import {
   CheckCircle2,
   FileImage,
   FileOutput,
+  Flag,
   LayoutTemplate,
   MoreVertical,
   ShieldCheck,
@@ -33,6 +34,7 @@ import {
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
+import { CourseStep } from "./course-step";
 import { ExportStep } from "./export-step";
 import { LayoutStep } from "./layout-step";
 import { ParticipantsStep } from "./participants-step";
@@ -41,13 +43,14 @@ import { VerificationStep } from "./verification-step";
 import type { BibTemplate, RaceEvent } from "@/lib/dossard/types";
 import { publicAsset } from "@/lib/dossard/assets";
 
-type Step = "participants" | "template" | "layout" | "verify" | "export";
+type Step = "participants" | "template" | "layout" | "verify" | "export" | "course";
 const steps: Array<{ value: Step; label: string; icon: typeof Users }> = [
   { value: "participants", label: "Participants", icon: Users },
   { value: "template", label: "Fond", icon: FileImage },
   { value: "layout", label: "Dossard", icon: LayoutTemplate },
   { value: "verify", label: "Contrôle", icon: CheckCircle2 },
   { value: "export", label: "PDF A4", icon: FileOutput },
+  { value: "course", label: "Course", icon: Flag },
 ];
 
 export function EventWorkspace({
@@ -85,7 +88,7 @@ export function EventWorkspace({
             <p className="truncate text-xs text-blue-100">{event.location || "Lieu à préciser"} · {event.year}</p>
           </div>
           <Badge className="hidden border-white/20 bg-white/10 text-white sm:flex">
-            <ShieldCheck className="text-[#fed60b]" /> Données locales
+            <ShieldCheck className="text-[#fed60b]" /> Local + mode course sécurisé
           </Badge>
           <span className={"text-xs " + (saveStatus === "error" ? "text-red-200" : "text-blue-100")}>
             {saveStatus === "saving" ? "Enregistrement…" : saveStatus === "error" ? "Échec" : "Enregistré"}
@@ -93,9 +96,9 @@ export function EventWorkspace({
           <DropdownMenu>
             <DropdownMenuTrigger asChild><Button size="icon-sm" variant="ghost" className="text-white hover:bg-white/15 hover:text-white"><MoreVertical /></Button></DropdownMenuTrigger>
             <DropdownMenuContent align="end">
-              <DropdownMenuItem disabled><ShieldCheck /> Données sur cet appareil</DropdownMenuItem>
+              <DropdownMenuItem disabled><ShieldCheck /> Dossards enregistrés sur cet appareil</DropdownMenuItem>
               <DropdownMenuSeparator />
-              <DropdownMenuItem className="text-red-600" onSelect={() => setPurgeOpen(true)}><Trash2 /> Supprimer les données nominatives</DropdownMenuItem>
+              <DropdownMenuItem className="text-red-600" onSelect={() => setPurgeOpen(true)}><Trash2 /> Supprimer les données nominatives locales</DropdownMenuItem>
             </DropdownMenuContent>
           </DropdownMenu>
         </div>
@@ -113,7 +116,7 @@ export function EventWorkspace({
                     value={item.value}
                     className="min-w-32 gap-2 rounded-xl px-4 py-3 font-bold data-[state=active]:bg-[#1154b3] data-[state=active]:text-white"
                   >
-                    <span className="grid size-6 place-items-center rounded-full border text-[11px] data-[state=active]:border-white">
+                    <span className="grid size-6 place-items-center rounded-full border text-[11px]">
                       {index + 1}
                     </span>
                     <Icon /> {item.label}
@@ -128,20 +131,21 @@ export function EventWorkspace({
           <TabsContent value="layout"><LayoutStep event={event} onChange={onChange} onSaveTemplate={onSaveTemplate} /></TabsContent>
           <TabsContent value="verify"><VerificationStep event={event} onContinue={() => setStep("export")} onReviewErrors={() => { setParticipantIssueFilter("errors"); setStep("participants"); }} /></TabsContent>
           <TabsContent value="export"><ExportStep key={singleId ?? "general"} event={event} selectedIds={selectedIds} initialSingleId={singleId} /></TabsContent>
+          <TabsContent value="course"><CourseStep event={event} /></TabsContent>
         </Tabs>
 
         <nav className="mt-7 flex items-center justify-between border-t border-blue-100 pt-5">
           <Button variant="outline" disabled={current <= 0} onClick={() => setStep(steps[current - 1].value)}>Étape précédente</Button>
-          <p className="hidden rounded-full bg-[#fff3a9] px-4 py-2 text-sm font-black text-[#173970] sm:block">Étape {current + 1} / 5</p>
-          <Button disabled={current >= 4} onClick={() => setStep(steps[current + 1].value)}>Étape suivante</Button>
+          <p className="hidden rounded-full bg-[#fff3a9] px-4 py-2 text-sm font-black text-[#173970] sm:block">Étape {current + 1} / {steps.length}</p>
+          <Button disabled={current >= steps.length - 1} onClick={() => setStep(steps[current + 1].value)}>Étape suivante</Button>
         </nav>
       </main>
 
       <AlertDialog open={purgeOpen} onOpenChange={setPurgeOpen}>
         <AlertDialogContent>
           <AlertDialogHeader>
-            <AlertDialogTitle>Supprimer les données nominatives ?</AlertDialogTitle>
-            <AlertDialogDescription>Les {event.participants.length} participants seront effacés. Le modèle restera.</AlertDialogDescription>
+            <AlertDialogTitle>Supprimer les données nominatives locales ?</AlertDialogTitle>
+            <AlertDialogDescription>Les {event.participants.length} participants seront effacés de cet appareil. Le modèle de dossard restera disponible.</AlertDialogDescription>
           </AlertDialogHeader>
           <AlertDialogFooter>
             <AlertDialogCancel>Annuler</AlertDialogCancel>
