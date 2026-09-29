@@ -10,6 +10,8 @@ interface StoredSession {
   user?: { id?: string };
 }
 
+export type EntryStatus = "registered" | "finished" | "dnf" | "exempt" | "absent";
+
 export interface CloudHeat {
   id: string;
   event_id: string;
@@ -19,10 +21,11 @@ export interface CloudHeat {
   sex_filter: string;
   challenge_enabled: boolean;
   challenge_classes: string[];
+  challenge_best_count: number | null;
   next_position: number;
   started_at?: string | null;
   finished_at?: string | null;
-  counts?: { total: number; registered: number; finished: number; dnf: number; exempt: number };
+  counts?: { total: number; registered: number; finished: number; dnf: number; exempt: number; absent: number };
 }
 
 export interface CloudEvent {
@@ -36,7 +39,7 @@ export interface CloudEvent {
 
 export interface HeatEntry {
   id: string;
-  status: "registered" | "finished" | "dnf" | "exempt";
+  status: EntryStatus;
   finish_position: number | null;
   elapsed_ms: number | null;
   scanned_at: string | null;
@@ -63,7 +66,7 @@ export interface StationState {
     finished_at?: string | null;
     event?: { name?: string };
   };
-  counts: { total: number; finished: number; dnf: number; exempt: number };
+  counts: { total: number; finished: number; dnf: number; exempt: number; absent: number };
   recent: Array<{
     id: string;
     finish_position: number;
@@ -106,7 +109,7 @@ async function authRequest(path: string, body: Record<string, unknown>) {
   });
   const payload = await response.json().catch(() => ({})) as Record<string, unknown>;
   if (!response.ok) {
-    const message = String(payload.msg ?? payload.message ?? payload.error_description ?? "AUTH_INDISPONIBLE");
+    const message = String(payload.msg ?? payload.message ?? payload.error_description ?? payload.error ?? "AUTH_INDISPONIBLE");
     throw new Error(message);
   }
   return saveSession(payload);
@@ -175,8 +178,13 @@ export function raceErrorMessage(error: unknown) {
     COURSE_DEJA_DEMARREE: "Cette course a déjà démarré.",
     SUPPRIMER_ARRIVEE_DABORD: "Supprimez d’abord l’arrivée de cet élève.",
     TERMINER_LA_COURSE_DABORD: "Terminez la course avant de la supprimer.",
+    POSITION_INVALIDE: "Cette position n’est pas valide.",
+    PARTICIPANT_INTROUVABLE: "Participant introuvable.",
+    COURSE_INTROUVABLE: "Course introuvable.",
+    EVENEMENT_INTROUVABLE: "Événement introuvable.",
   };
-  if (/anonymous|signup|disabled/i.test(code)) return "Le mode organisateur sécurisé n’est pas encore activé dans Supabase (connexion anonyme).";
+  if (/anonymous|signup|disabled/i.test(code)) return "Le mode organisateur sécurisé n’est pas disponible sur ce navigateur. Rechargez la page puis réessayez.";
+  if (/Failed to fetch|NetworkError|Load failed/i.test(code)) return "Connexion au serveur impossible. Vérifiez le réseau avant de poursuivre la course.";
   return messages[code] ?? `Erreur : ${code}`;
 }
 
