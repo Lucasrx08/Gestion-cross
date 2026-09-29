@@ -1,14 +1,7 @@
 const SUPABASE_URL = "https://iybbfprsnhvdbpvftwjk.supabase.co";
 const SUPABASE_KEY = "sb_publishable_bEJiROkfolgJkX4LqsXmDw_6vUspKNu";
 const API_URL = `${SUPABASE_URL}/functions/v1/race-api`;
-const SESSION_KEY = "gestion-cross-organizer-session-v1";
-
-interface StoredSession {
-  access_token: string;
-  refresh_token: string;
-  expires_at: number;
-  user?: { id?: string };
-}
+const OWNER_KEY_STORAGE = "gestion-cross-owner-key-v1";
 
 export type EntryStatus = "registered" | "finished" | "dnf" | "exempt" | "absent";
 
@@ -77,91 +70,41 @@ export interface StationState {
   }>;
 }
 
-function readSession(): StoredSession | null {
-  if (typeof window === "undefined") return null;
-  try {
-    const raw = window.localStorage.getItem(SESSION_KEY);
-    return raw ? JSON.parse(raw) as StoredSession : null;
-  } catch {
-    return null;
-  }
+function ownerKey() {
+  if (typeof window === "undefined") throw new Error("CLE_ORGANISATEUR_INDISPONIBLE");
+  let value = window.localStorage.getItem(OWNER_KEY_STORAGE);
+  if (value && value.length >= 32) return value;
+  const bytes = new Uint8Array(32);
+  window.crypto.getRandomValues(bytes);
+  value = Array.from(bytes, (byte) => byte.toString(16).padStart(2, "0")).join("");
+  window.localStorage.setItem(OWNER_KEY_STORAGE, value);
+  return value;
 }
 
-function saveSession(raw: Record<string, unknown>) {
-  const source = (raw.session && typeof raw.session === "object" ? raw.session : raw) as Record<string, unknown>;
-  const expiresIn = Number(source.expires_in) || 3600;
-  const session: StoredSession = {
-    access_token: String(source.access_token ?? ""),
-    refresh_token: String(source.refresh_token ?? ""),
-    expires_at: Number(source.expires_at) || Math.floor(Date.now() / 1000) + expiresIn,
-    user: source.user && typeof source.user === "object" ? source.user as { id?: string } : undefined,
-  };
-  if (!session.access_token || !session.refresh_token) throw new Error("SESSION_INVALIDE");
-  window.localStorage.setItem(SESSION_KEY, JSON.stringify(session));
-  return session;
-}
-
-async function authRequest(path: string, body: Record<string, unknown>) {
-  const response = await fetch(`${SUPABASE_URL}/auth/v1/${path}`, {
-    method: "POST",
-    headers: { apikey: SUPABASE_KEY, "Content-Type": "application/json" },
-    body: JSON.stringify(body),
-  });
-  const payload = await response.json().catch(() => ({})) as Record<string, unknown>;
-  if (!response.ok) {
-    const message = String(payload.msg ?? payload.message ?? payload.error_description ?? payload.error ?? "AUTH_INDISPONIBLE");
-    throw new Error(message);
-  }
-  return saveSession(payload);
-}
-
-export async function ensureOrganizerSession() {
-  const current = readSession();
-  if (current?.access_token && current.expires_at > Math.floor(Date.now() / 1000) + 90) return current;
-  if (current?.refresh_token) {
-    try {
-      return await authRequest("token?grant_type=refresh_token", { refresh_token: current.refresh_token });
-    } catch {
-      window.localStorage.removeItem(SESSION_KEY);
-    }
-  }
-  return authRequest("signup", {
-    data: { app: "gestion-cross", role: "organizer" },
-    gotrue_meta_security: {},
-  });
-}
-
-async function api<T>(action: string, payload: Record<string, unknown>, token?: string): Promise<T> {
+async function api<T>(action: string, payload: Record<string, unknown>, includeOwnerKey = false): Promise<T> {
   const response = await fetch(API_URL, {
     method: "POST",
     headers: {
       apikey: SUPABASE_KEY,
       "Content-Type": "application/json",
-      ...(token ? { Authorization: `Bearer ${token}` } : {}),
     },
-    body: JSON.stringify({ action, ...payload }),
+    body: JSON.stringify({
+      action,
+      ...(includeOwnerKey ? { ownerKey: ownerKey() } : {}),
+      ...payload,
+    }),
   });
   const result = await response.json().catch(() => ({})) as Record<string, unknown>;
   if (!response.ok || result.error) throw new Error(String(result.error ?? `HTTP_${response.status}`));
   return result.data as T;
 }
 
-export async function ownerApi<T>(action: string, payload: Record<string, unknown> = {}): Promise<T> {
-  let session = await ensureOrganizerSession();
-  try {
-    return await api<T>(action, payload, session.access_token);
-  } catch (error) {
-    if (error instanceof Error && ["CONNEXION_REQUISE", "SESSION_INVALIDE"].includes(error.message)) {
-      window.localStorage.removeItem(SESSION_KEY);
-      session = await ensureOrganizerSession();
-      return api<T>(action, payload, session.access_token);
-    }
-    throw error;
-  }
+export function ownerApi<T>(action: string, payload: Record<string, unknown> = {}): Promise<T> {
+  return api<T>(action, payload, true);
 }
 
 export function stationApi<T>(action: string, payload: Record<string, unknown> = {}) {
-  return api<T>(action, payload);
+  return api<T>(action, payload, false);
 }
 
 export function raceErrorMessage(error: unknown) {
@@ -172,8 +115,9 @@ export function raceErrorMessage(error: unknown) {
     DOSSARD_INCONNU: "Ce dossard ne fait pas partie de cette course.",
     "DOSSARD_DEJA_SCANNÉ": "Ce dossard a déjà été enregistré à l’arrivée.",
     "PARTICIPANT_DISPENSÉ": "Cet élève est indiqué comme dispensé.",
-    CONNEXION_REQUISE: "Connexion organisateur requise.",
-    SESSION_INVALIDE: "La session organisateur doit être recréée.",
+    PARTICIPANT_ABSENT: "Cet élève est indiqué comme absent.",
+    CLE_ORGANISATEUR_INVALIDE: "La clé organisateur de cet appareil est invalide.",
+    CLE_ORGANISATEUR_INDISPONIBLE: "Le stockage local du navigateur est indisponible.",
     AUCUN_PARTICIPANT: "Aucun participant n’est sélectionné.",
     COURSE_DEJA_DEMARREE: "Cette course a déjà démarré.",
     SUPPRIMER_ARRIVEE_DABORD: "Supprimez d’abord l’arrivée de cet élève.",
@@ -183,7 +127,6 @@ export function raceErrorMessage(error: unknown) {
     COURSE_INTROUVABLE: "Course introuvable.",
     EVENEMENT_INTROUVABLE: "Événement introuvable.",
   };
-  if (/anonymous|signup|disabled/i.test(code)) return "Le mode organisateur sécurisé n’est pas disponible sur ce navigateur. Rechargez la page puis réessayez.";
   if (/Failed to fetch|NetworkError|Load failed/i.test(code)) return "Connexion au serveur impossible. Vérifiez le réseau avant de poursuivre la course.";
   return messages[code] ?? `Erreur : ${code}`;
 }
