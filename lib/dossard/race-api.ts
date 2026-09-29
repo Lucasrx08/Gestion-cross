@@ -104,12 +104,12 @@ async function authRequest(path: string, body: Record<string, unknown>) {
     headers: { apikey: SUPABASE_KEY, "Content-Type": "application/json" },
     body: JSON.stringify(body),
   });
-  const payload = await response.json().catch(() => ({}));
+  const payload = await response.json().catch(() => ({})) as Record<string, unknown>;
   if (!response.ok) {
-    const message = String(payload?.msg ?? payload?.message ?? payload?.error_description ?? "AUTH_INDISPONIBLE");
+    const message = String(payload.msg ?? payload.message ?? payload.error_description ?? "AUTH_INDISPONIBLE");
     throw new Error(message);
   }
-  return saveSession(payload as Record<string, unknown>);
+  return saveSession(payload);
 }
 
 export async function ensureOrganizerSession() {
@@ -138,8 +138,8 @@ async function api<T>(action: string, payload: Record<string, unknown>, token?: 
     },
     body: JSON.stringify({ action, ...payload }),
   });
-  const result = await response.json().catch(() => ({}));
-  if (!response.ok || result?.error) throw new Error(String(result?.error ?? `HTTP_${response.status}`));
+  const result = await response.json().catch(() => ({})) as Record<string, unknown>;
+  if (!response.ok || result.error) throw new Error(String(result.error ?? `HTTP_${response.status}`));
   return result.data as T;
 }
 
