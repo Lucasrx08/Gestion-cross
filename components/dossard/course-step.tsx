@@ -1,277 +1,70 @@
 "use client";
 
-import { useEffect, useMemo, useState } from "react";
-import { ArrowDown, ArrowUp, CircleStop, Cloud, ExternalLink, Flag, Link2, Medal, Play, Printer, RefreshCw, RotateCcw, Trash2, Users } from "lucide-react";
+import { useEffect,useMemo,useState } from "react";
+import QRCode from "qrcode";
+import { ArrowDown,ArrowUp,CheckCircle2,Cloud,Download,Flag,Image as ImageIcon,Link2,Medal,Palette,Play,Plus,Printer,Share2,Square,Trash2,Users } from "lucide-react";
 import { toast } from "sonner";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
+import { Dialog,DialogContent,DialogDescription,DialogFooter,DialogHeader,DialogTitle } from "@/components/ui/dialog";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
-import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
+import { Select,SelectContent,SelectItem,SelectTrigger,SelectValue } from "@/components/ui/select";
 import type { RaceEvent } from "@/lib/dossard/types";
-import { formatElapsed, type CloudEvent, type CloudHeat, type EntryStatus, type HeatEntry, ownerApi, raceErrorMessage } from "@/lib/dossard/race-api";
+import { formatElapsed,type CloudEvent,type CloudHeat,type EntryStatus,type HeatEntry,type StationInfo,ownerApi,raceErrorMessage } from "@/lib/dossard/race-api";
 
-interface OwnerState { event: CloudEvent | null; heats: CloudHeat[]; }
-interface HeatEntriesResponse { heat: CloudHeat; entries: HeatEntry[]; }
+interface OwnerState{event:CloudEvent|null;heats:CloudHeat[]}
+interface HeatResponse{heat:CloudHeat;entries:HeatEntry[];stations:StationInfo[]}
+const letters=["A","B","C","D"];
+const isFemale=(v?:string)=>/^(f|fille|female|féminin|feminin|girl)$/i.test((v??"").trim());
+const isMale=(v?:string)=>/^(m|garçon|garcon|male|masculin|boy)$/i.test((v??"").trim());
+const stationKey=(id:string)=>`gestion-cross-station-code:${id}`;
+const esc=(v:unknown)=>String(v??"").replace(/[&<>'"]/g,c=>({"&":"&amp;","<":"&lt;",">":"&gt;","'":"&#39;",'"':"&quot;"}[c]??c));
+const statusLabel=(s:EntryStatus)=>s==="finished"?"Arrivé":s==="dnf"?"Non-finisseur":s==="exempt"?"Dispensé":s==="absent"?"Absent":"À courir";
+function challenge(entries:HeatEntry[],classes:string[],best:number|null){const finish=entries.filter(e=>e.status==="finished"&&e.finish_position);const penalty=Math.max(0,...finish.map(e=>e.finish_position??0))+1;return classes.map(className=>{const members=entries.filter(e=>e.participant.class_name===className),scores=members.map(e=>e.status==="finished"&&e.finish_position?e.finish_position:penalty).sort((a,b)=>a-b);let retained=best?scores.slice(0,best):scores;if(best)while(retained.length<best)retained.push(penalty);return{className,points:retained.reduce((a,b)=>a+b,0),members:members.length,retained:retained.length,penalty}}).sort((a,b)=>a.points-b.points||a.className.localeCompare(b.className,"fr"))}
+function printWindow(title:string,body:string){const w=window.open("","_blank","width=1000,height=800");if(!w)return toast.error("Le navigateur a bloqué la fenêtre d’impression.");w.document.write(`<!doctype html><html><head><meta charset="utf-8"><title>${esc(title)}</title><style>@page{margin:14mm}body{font-family:Arial,sans-serif;color:#102347}header{display:flex;align-items:center;gap:18px;border-bottom:5px solid #fed60b;padding-bottom:14px;margin-bottom:24px}header img{max-width:90px;max-height:70px}h1{margin:0;color:#1154b3}h2{margin-top:28px}p{color:#64748b}table{width:100%;border-collapse:collapse}th,td{padding:8px;border-bottom:1px solid #dbe5f2;text-align:left}th{background:#eef5ff}.podium{font-size:18px;font-weight:700}.footer{margin-top:30px;font-size:11px;color:#94a3b8}@media print{button{display:none}}</style></head><body>${body}<div class="footer">Gestion Cross · Créé par L. RIGAUX</div></body></html>`);w.document.close();w.focus();setTimeout(()=>w.print(),250)}
 
-function isFemale(value?: string) { return /^(f|fille|female|féminin|feminin|girl)$/i.test((value ?? "").trim()); }
-function isMale(value?: string) { return /^(m|garçon|garcon|male|masculin|boy)$/i.test((value ?? "").trim()); }
-function stationStorageKey(heatId: string) { return `gestion-cross-station-code:${heatId}`; }
-function escapeHtml(value: unknown) {
-  return String(value ?? "").replace(/[&<>'"]/g, (char) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", "'": "&#39;", '"': "&quot;" }[char] ?? char));
-}
-
-function statusLabel(status: EntryStatus) {
-  return status === "finished" ? "Arrivé" : status === "dnf" ? "Abandon / non classé" : status === "exempt" ? "Dispensé" : status === "absent" ? "Absent" : "À courir";
-}
-
-function statusTone(status: EntryStatus) {
-  return status === "finished" ? "bg-emerald-50 text-emerald-700" : status === "exempt" ? "bg-violet-50 text-violet-700" : status === "absent" ? "bg-rose-50 text-rose-700" : status === "dnf" ? "bg-amber-50 text-amber-700" : "bg-slate-100 text-slate-600";
-}
-
-function buildChallenge(entries: HeatEntry[], classes: string[], bestCount?: number | null) {
-  const finishers = entries.filter((entry) => entry.status === "finished" && entry.finish_position != null);
-  const penalty = Math.max(0, ...finishers.map((entry) => entry.finish_position ?? 0)) + 1;
-  return classes.map((className) => {
-    const members = entries.filter((entry) => entry.participant.class_name === className);
-    const scores = members.map((entry) => entry.status === "finished" && entry.finish_position ? entry.finish_position : penalty).sort((a, b) => a - b);
-    let retained = scores;
-    if (bestCount) {
-      retained = scores.slice(0, bestCount);
-      while (retained.length < bestCount) retained.push(penalty);
-    }
-    const points = retained.reduce((sum, score) => sum + score, 0);
-    return { className, points, members: members.length, retained: retained.length, penalty };
-  }).sort((a, b) => a.points - b.points || a.className.localeCompare(b.className, "fr"));
-}
-
-function printResults(heat: CloudHeat, entries: HeatEntry[]) {
-  const ranked = entries.filter((entry) => entry.status === "finished").sort((a, b) => (a.finish_position ?? 99999) - (b.finish_position ?? 99999));
-  const unranked = entries.filter((entry) => entry.status !== "finished").sort((a, b) => a.participant.class_name.localeCompare(b.participant.class_name, "fr") || a.participant.last_name.localeCompare(b.participant.last_name, "fr"));
-  const challenge = heat.challenge_enabled ? buildChallenge(entries, heat.challenge_classes.length ? heat.challenge_classes : heat.selected_classes, heat.challenge_best_count) : [];
-  const rows = ranked.map((entry) => `<tr><td>${entry.finish_position ?? ""}</td><td>${escapeHtml(entry.participant.bib_number)}</td><td>${escapeHtml(entry.participant.last_name.toUpperCase())}</td><td>${escapeHtml(entry.participant.first_name)}</td><td>${escapeHtml(entry.participant.class_name)}</td><td>${escapeHtml(formatElapsed(entry.elapsed_ms))}</td></tr>`).join("");
-  const unrankedRows = unranked.map((entry) => `<tr><td>${escapeHtml(entry.participant.bib_number)}</td><td>${escapeHtml(entry.participant.last_name.toUpperCase())}</td><td>${escapeHtml(entry.participant.first_name)}</td><td>${escapeHtml(entry.participant.class_name)}</td><td>${escapeHtml(statusLabel(entry.status))}</td></tr>`).join("");
-  const challengeRows = challenge.map((item, index) => `<tr><td>${index + 1}</td><td>${escapeHtml(item.className)}</td><td>${item.points}</td><td>${item.retained}</td><td>${item.members}</td></tr>`).join("");
-  const popup = window.open("", "_blank", "width=1000,height=800");
-  if (!popup) { toast.error("Le navigateur a bloqué la fenêtre d’impression."); return; }
-  const challengeRule = heat.challenge_best_count ? `${heat.challenge_best_count} meilleurs résultats retenus par classe` : "Tous les élèves comptent";
-  popup.document.write(`<!doctype html><html><head><meta charset="utf-8"><title>${escapeHtml(heat.name)}</title><style>body{font-family:Arial,sans-serif;color:#102347;padding:28px}h1{color:#1154b3;margin-bottom:4px}h2{margin-top:30px}table{border-collapse:collapse;width:100%;margin-top:16px}th,td{border:1px solid #dbe5f2;padding:8px;text-align:left}th{background:#eef5ff}.meta{color:#64748b}.small{font-size:12px}@media print{body{padding:0}button{display:none}}</style></head><body><h1>${escapeHtml(heat.name)}</h1><p class="meta">Classement généré par Gestion Cross</p><table><thead><tr><th>Rang</th><th>Dossard</th><th>Nom</th><th>Prénom</th><th>Classe</th><th>Temps</th></tr></thead><tbody>${rows}</tbody></table>${unranked.length ? `<h2>Non classés / absents / dispensés</h2><table><thead><tr><th>Dossard</th><th>Nom</th><th>Prénom</th><th>Classe</th><th>Statut</th></tr></thead><tbody>${unrankedRows}</tbody></table>` : ""}${challenge.length ? `<h2>Challenge classes</h2><p>${escapeHtml(challengeRule)}. Le plus petit total de points est classé en premier. Un élève non classé, dispensé ou absent reçoit ${challenge[0]?.penalty ?? 1} points.</p><table><thead><tr><th>Rang</th><th>Classe</th><th>Points</th><th>Résultats retenus</th><th>Élèves engagés</th></tr></thead><tbody>${challengeRows}</tbody></table>` : ""}</body></html>`);
-  popup.document.close();
-  popup.focus();
-  window.setTimeout(() => popup.print(), 250);
-}
-
-export function CourseStep({ event }: { event: RaceEvent }) {
-  const classes = useMemo(() => [...new Set(event.participants.map((participant) => participant.className).filter(Boolean))].sort((a, b) => a.localeCompare(b, "fr")), [event.participants]);
-  const [cloudEvent, setCloudEvent] = useState<CloudEvent | null>(null);
-  const [heats, setHeats] = useState<CloudHeat[]>([]);
-  const [selectedHeatId, setSelectedHeatId] = useState<string>();
-  const [entries, setEntries] = useState<HeatEntry[]>([]);
-  const [loading, setLoading] = useState(false);
-  const [heatName, setHeatName] = useState("");
-  const [selectedClasses, setSelectedClasses] = useState<Set<string>>(new Set());
-  const [sexFilter, setSexFilter] = useState("all");
-  const [challengeEnabled, setChallengeEnabled] = useState(true);
-  const [challengeMode, setChallengeMode] = useState<"all" | "best">("best");
-  const [challengeBestCount, setChallengeBestCount] = useState(10);
-  const [stationCode, setStationCode] = useState("");
-  const selectedHeat = heats.find((heat) => heat.id === selectedHeatId);
-
-  const refreshOwnerState = async () => {
-    try {
-      const state = await ownerApi<OwnerState>("owner_state", { localEventId: event.id });
-      setCloudEvent(state.event);
-      setHeats(state.heats ?? []);
-      if (!selectedHeatId && state.heats?.length) setSelectedHeatId(state.heats[0].id);
-      if (selectedHeatId && !state.heats?.some((heat) => heat.id === selectedHeatId)) setSelectedHeatId(state.heats?.[0]?.id);
-    } catch (error) { toast.error(raceErrorMessage(error)); }
-  };
-
-  const refreshEntries = async (heatId = selectedHeatId) => {
-    if (!heatId) return;
-    try {
-      const result = await ownerApi<HeatEntriesResponse>("heat_entries", { heatId });
-      setEntries(result.entries ?? []);
-      setHeats((items) => items.map((item) => item.id === result.heat.id ? { ...item, ...result.heat } : item));
-    } catch (error) { toast.error(raceErrorMessage(error)); }
-  };
-
-  useEffect(() => { void refreshOwnerState(); }, []); // eslint-disable-line react-hooks/exhaustive-deps
-  useEffect(() => {
-    if (!selectedHeatId) { setEntries([]); setStationCode(""); return; }
-    setStationCode(window.localStorage.getItem(stationStorageKey(selectedHeatId)) ?? "");
-    void refreshEntries(selectedHeatId);
-  }, [selectedHeatId]); // eslint-disable-line react-hooks/exhaustive-deps
-
-  useEffect(() => {
-    if (!selectedHeatId || selectedHeat?.status !== "running") return;
-    const timer = window.setInterval(() => { void refreshEntries(selectedHeatId); }, 2500);
-    return () => window.clearInterval(timer);
-  }, [selectedHeatId, selectedHeat?.status]); // eslint-disable-line react-hooks/exhaustive-deps
-
-  const sync = async () => {
-    if (!event.participants.length) return toast.error("Importez d’abord les élèves.");
-    setLoading(true);
-    try {
-      const result = await ownerApi<{ event: CloudEvent; participantCount: number }>("sync_event", { event });
-      setCloudEvent(result.event);
-      toast.success(`${result.participantCount} élèves synchronisés pour le mode course.`);
-      await refreshOwnerState();
-    } catch (error) { toast.error(raceErrorMessage(error)); }
-    finally { setLoading(false); }
-  };
-
-  const toggleClass = (className: string) => {
-    setSelectedClasses((current) => {
-      const next = new Set(current);
-      if (next.has(className)) next.delete(className); else next.add(className);
-      return next;
-    });
-  };
-
-  const createHeat = async () => {
-    if (!cloudEvent) return;
-    const selected = [...selectedClasses];
-    if (!heatName.trim() || !selected.length) return toast.error("Donnez un nom à la course et choisissez au moins une classe.");
-    if (challengeEnabled && challengeMode === "best" && (!Number.isInteger(challengeBestCount) || challengeBestCount < 1)) return toast.error("Indiquez un nombre de résultats à retenir.");
-    const participants = event.participants.filter((participant) => selected.includes(participant.className) && (sexFilter === "all" || (sexFilter === "female" ? isFemale(participant.sex) : isMale(participant.sex))));
-    if (!participants.length) return toast.error("Aucun élève ne correspond à cette sélection.");
-    setLoading(true);
-    try {
-      const result = await ownerApi<{ heat: CloudHeat; participantCount: number }>("create_heat", {
-        eventId: cloudEvent.id,
-        name: heatName.trim(),
-        selectedClasses: selected,
-        sexFilter,
-        challengeEnabled,
-        challengeClasses: selected,
-        challengeBestCount: challengeEnabled && challengeMode === "best" ? challengeBestCount : null,
-        participantIds: participants.map((participant) => participant.id),
-      });
-      setHeatName("");
-      setSelectedClasses(new Set());
-      toast.success(`Course créée avec ${result.participantCount} participants.`);
-      await refreshOwnerState();
-      setSelectedHeatId(result.heat.id);
-    } catch (error) { toast.error(raceErrorMessage(error)); }
-    finally { setLoading(false); }
-  };
-
-  const startHeat = async () => {
-    if (!selectedHeatId) return;
-    if (!confirm("Lancer cette course maintenant ? Le chronomètre démarre immédiatement.")) return;
-    setLoading(true);
-    try {
-      const result = await ownerApi<{ heat: CloudHeat; stationCode: string }>("start_heat", { heatId: selectedHeatId });
-      window.localStorage.setItem(stationStorageKey(selectedHeatId), result.stationCode);
-      setStationCode(result.stationCode);
-      toast.success("Course lancée. Les postes d’arrivée peuvent se connecter.");
-      await refreshOwnerState();
-      await refreshEntries(selectedHeatId);
-    } catch (error) { toast.error(raceErrorMessage(error)); }
-    finally { setLoading(false); }
-  };
-
-  const regenerateCode = async () => {
-    if (!selectedHeatId || !confirm("Générer un nouveau code ? Les anciens liens d’arrivée cesseront de fonctionner.")) return;
-    try {
-      const result = await ownerApi<{ stationCode: string }>("regenerate_station_code", { heatId: selectedHeatId });
-      window.localStorage.setItem(stationStorageKey(selectedHeatId), result.stationCode);
-      setStationCode(result.stationCode);
-      toast.success("Nouveau code d’arrivée généré.");
-    } catch (error) { toast.error(raceErrorMessage(error)); }
-  };
-
-  const finishHeat = async () => {
-    if (!selectedHeatId || !confirm("Terminer la course ? Les élèves encore « À courir » passeront en non-finisseurs.")) return;
-    try {
-      await ownerApi("finish_heat", { heatId: selectedHeatId });
-      toast.success("Course terminée.");
-      await refreshOwnerState();
-      await refreshEntries(selectedHeatId);
-    } catch (error) { toast.error(raceErrorMessage(error)); }
-  };
-
-  const deleteHeat = async () => {
-    if (!selectedHeatId || !selectedHeat || !confirm(`Supprimer définitivement la course « ${selectedHeat.name} » ?`)) return;
-    try {
-      await ownerApi("delete_heat", { heatId: selectedHeatId });
-      window.localStorage.removeItem(stationStorageKey(selectedHeatId));
-      setEntries([]);
-      setSelectedHeatId(undefined);
-      toast.success("Course supprimée.");
-      await refreshOwnerState();
-    } catch (error) { toast.error(raceErrorMessage(error)); }
-  };
-
-  const changeStatus = async (entry: HeatEntry, status: Exclude<EntryStatus, "finished">) => {
-    try {
-      await ownerApi("set_entry_status", { entryId: entry.id, status });
-      await refreshEntries();
-    } catch (error) { toast.error(raceErrorMessage(error)); }
-  };
-
-  const removeFinish = async (entry: HeatEntry) => {
-    if (!confirm(`Annuler l’arrivée de ${entry.participant.first_name} ${entry.participant.last_name} ? Les rangs suivants seront recalculés.`)) return;
-    try {
-      await ownerApi("remove_finish", { entryId: entry.id });
-      await refreshEntries();
-    } catch (error) { toast.error(raceErrorMessage(error)); }
-  };
-
-  const move = async (entry: HeatEntry, delta: number) => {
-    const position = (entry.finish_position ?? 0) + delta;
-    if (position < 1) return;
-    try {
-      await ownerApi("reorder_finish", { entryId: entry.id, position });
-      await refreshEntries();
-    } catch (error) { toast.error(raceErrorMessage(error)); }
-  };
-
-  const stationLink = stationCode && typeof window !== "undefined" ? `${window.location.origin}${window.location.pathname}?station=${encodeURIComponent(stationCode)}` : "";
-  const challenge = selectedHeat?.challenge_enabled ? buildChallenge(entries, selectedHeat.challenge_classes.length ? selectedHeat.challenge_classes : selectedHeat.selected_classes, selectedHeat.challenge_best_count) : [];
-  const ranked = entries.filter((entry) => entry.status === "finished").sort((a, b) => (a.finish_position ?? 99999) - (b.finish_position ?? 99999));
-
-  return <div className="space-y-6">
-    <section className="race-card rounded-[1.6rem] border bg-white p-5 shadow-sm">
-      <div className="flex flex-col gap-4 lg:flex-row lg:items-center lg:justify-between">
-        <div><div className="flex items-center gap-2"><Cloud className="text-[#1154b3]"/><h2 className="text-xl font-black">Mode Course</h2></div><p className="mt-1 max-w-3xl text-sm text-slate-500">Préparez les courses, ouvrez autant de postes d’arrivée que nécessaire, corrigez les rangs puis imprimez les classements. Les places sont attribuées par le serveur commun, pas par chaque ordinateur.</p></div>
-        <Button onClick={sync} disabled={loading || !event.participants.length}><RefreshCw className={loading ? "animate-spin" : ""}/>{cloudEvent ? "Resynchroniser les élèves" : "Activer le mode course"}</Button>
-      </div>
-      {cloudEvent && <div className="mt-4 flex flex-wrap gap-2"><Badge className="bg-emerald-50 text-emerald-700">Serveur prêt</Badge><Badge variant="outline">{event.participants.length} élèves</Badge><Badge variant="outline">{heats.length} course{heats.length > 1 ? "s" : ""}</Badge></div>}
-    </section>
-
-    {cloudEvent && <section className="grid gap-5 xl:grid-cols-[420px_minmax(0,1fr)]">
-      <div className="space-y-5">
-        <div className="race-card rounded-[1.6rem] border bg-white p-5 shadow-sm">
-          <h3 className="font-black">Créer une course</h3>
-          <div className="mt-4 space-y-4">
-            <div><Label>Nom de la course</Label><Input value={heatName} onChange={(e) => setHeatName(e.target.value)} placeholder="Ex. 6e filles" /></div>
-            <div><Label>Sexe</Label><Select value={sexFilter} onValueChange={setSexFilter}><SelectTrigger><SelectValue/></SelectTrigger><SelectContent><SelectItem value="all">Tous</SelectItem><SelectItem value="female">Filles</SelectItem><SelectItem value="male">Garçons</SelectItem></SelectContent></Select></div>
-            <div><Label>Classes concernées</Label><div className="mt-2 grid grid-cols-2 gap-2">{classes.map((className) => <label key={className} className={`flex cursor-pointer items-center gap-2 rounded-xl border px-3 py-2 text-sm font-bold ${selectedClasses.has(className) ? "border-blue-500 bg-blue-50 text-blue-800" : "bg-white"}`}><input type="checkbox" checked={selectedClasses.has(className)} onChange={() => toggleClass(className)} />{className}</label>)}</div></div>
-            <div className="rounded-xl bg-[#fff8cc] p-3"><label className="flex items-center gap-2 text-sm font-bold"><input type="checkbox" checked={challengeEnabled} onChange={(e) => setChallengeEnabled(e.target.checked)} />Activer le challenge classes</label>{challengeEnabled && <div className="mt-3 space-y-3"><Select value={challengeMode} onValueChange={(value) => setChallengeMode(value as "all" | "best")}><SelectTrigger><SelectValue/></SelectTrigger><SelectContent><SelectItem value="best">Retenir les meilleurs résultats</SelectItem><SelectItem value="all">Compter tous les élèves</SelectItem></SelectContent></Select>{challengeMode === "best" && <div><Label>Nombre de résultats retenus par classe</Label><Input type="number" min={1} max={500} value={challengeBestCount} onChange={(e) => setChallengeBestCount(Math.max(1, Number(e.target.value) || 1))}/><p className="mt-1 text-xs text-slate-600">Si une classe a moins d’élèves, les places manquantes prennent la pénalité du dernier arrivé + 1.</p></div>}</div>}</div>
-            <Button className="w-full" onClick={createHeat} disabled={loading}><Flag/>Créer la course</Button>
-          </div>
-        </div>
-
-        <div className="race-card rounded-[1.6rem] border bg-white p-5 shadow-sm"><h3 className="font-black">Courses</h3><div className="mt-3 space-y-2">{!heats.length && <p className="text-sm text-slate-500">Aucune course créée.</p>}{heats.map((heat) => <button key={heat.id} onClick={() => setSelectedHeatId(heat.id)} className={`w-full rounded-xl border p-3 text-left transition ${selectedHeatId === heat.id ? "border-[#1154b3] bg-blue-50" : "hover:bg-slate-50"}`}><div className="flex items-center justify-between gap-2"><span className="font-black">{heat.name}</span><Badge className={heat.status === "running" ? "bg-emerald-100 text-emerald-800" : heat.status === "finished" ? "bg-slate-200 text-slate-700" : "bg-blue-100 text-blue-800"}>{heat.status === "running" ? "En cours" : heat.status === "finished" ? "Terminée" : "Prête"}</Badge></div><p className="mt-1 text-xs text-slate-500">{heat.selected_classes.join(", ")} · {heat.counts?.finished ?? heat.next_position} arrivée(s)</p></button>)}</div></div>
-      </div>
-
-      <div className="space-y-5">
-        {!selectedHeat ? <div className="grid min-h-80 place-items-center rounded-[1.6rem] border bg-white text-slate-500">Sélectionnez une course.</div> : <>
-          <div className="race-card rounded-[1.6rem] border bg-white p-5 shadow-sm">
-            <div className="flex flex-col gap-4 lg:flex-row lg:items-start lg:justify-between"><div><h2 className="text-2xl font-black">{selectedHeat.name}</h2><p className="text-sm text-slate-500">{selectedHeat.selected_classes.join(", ")} · {entries.length} engagés</p></div><div className="flex flex-wrap gap-2"><Button variant="outline" onClick={() => void refreshEntries()}><RefreshCw/>Actualiser</Button>{selectedHeat.status === "draft" && <Button onClick={startHeat}><Play/>Lancer la course</Button>}{selectedHeat.status === "running" && <Button className="bg-red-600 hover:bg-red-700" onClick={finishHeat}><CircleStop/>Terminer</Button>}{selectedHeat.status === "finished" && <Button onClick={() => printResults(selectedHeat, entries)}><Printer/>Imprimer les classements</Button>}{selectedHeat.status !== "running" && <Button variant="outline" className="text-red-600" onClick={deleteHeat}><Trash2/>Supprimer</Button>}</div></div>
-
-            {selectedHeat.status === "running" && <div className="mt-5 rounded-2xl border-2 border-dashed border-blue-200 bg-blue-50 p-5"><div className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between"><div><p className="text-xs font-black uppercase tracking-widest text-blue-500">Code d’arrivée</p><p className="mt-1 font-mono text-3xl font-black tracking-[.18em] text-[#102347]">{stationCode || "Code indisponible"}</p><p className="mt-2 text-sm text-slate-600">Chaque ordinateur ouvert avec ce lien devient un poste d’arrivée. Aucun partage des places n’est à paramétrer.</p></div><div className="flex flex-wrap gap-2"><Button variant="outline" onClick={regenerateCode}><RotateCcw/>Nouveau code</Button>{stationLink && <><Button variant="outline" onClick={async () => { try { await navigator.clipboard.writeText(stationLink); toast.success("Lien copié."); } catch { toast.error("Copie impossible. Sélectionnez le lien affiché."); } }}><Link2/>Copier le lien</Button><Button variant="outline" onClick={() => window.open(stationLink, "_blank", "noopener,noreferrer")}><ExternalLink/>Ouvrir un poste</Button></>}</div></div>{stationLink && <p className="mt-3 break-all rounded-lg bg-white p-2 font-mono text-xs text-blue-700">{stationLink}</p>}</div>}
-
-            <div className="mt-5 grid grid-cols-2 gap-3 md:grid-cols-5">{[{label:"Engagés",value:entries.length},{label:"Arrivés",value:entries.filter((e)=>e.status==="finished").length},{label:"Dispensés",value:entries.filter((e)=>e.status==="exempt").length},{label:"Absents",value:entries.filter((e)=>e.status==="absent").length},{label:"Non-finisseurs",value:entries.filter((e)=>e.status==="dnf").length}].map((item) => <div key={item.label} className="rounded-xl bg-slate-50 p-3"><p className="text-xs text-slate-500">{item.label}</p><p className="text-2xl font-black">{item.value}</p></div>)}</div>
-          </div>
-
-          <div className="overflow-hidden rounded-[1.6rem] border bg-white shadow-sm"><div className="flex items-center justify-between border-b p-4"><div><h3 className="font-black">Arrivées et statuts</h3><p className="text-xs text-slate-500">Les flèches corrigent immédiatement l’ordre d’arrivée.</p></div>{selectedHeat.status !== "draft" && <Button size="sm" variant="outline" onClick={() => printResults(selectedHeat, entries)}><Printer/>Imprimer</Button>}</div><div className="overflow-x-auto"><table className="min-w-full text-left text-sm"><thead className="bg-blue-50 text-xs uppercase text-slate-500"><tr><th className="px-4 py-3">Rang</th><th>Dossard</th><th>Élève</th><th>Classe</th><th>Temps</th><th>Statut</th><th className="px-4 text-right">Actions</th></tr></thead><tbody className="divide-y">{[...entries].sort((a,b) => (a.finish_position ?? 999999) - (b.finish_position ?? 999999) || a.participant.last_name.localeCompare(b.participant.last_name,"fr")).map((entry) => <tr key={entry.id} className="hover:bg-slate-50"><td className="px-4 py-3 text-lg font-black text-[#1154b3]">{entry.finish_position ?? "—"}</td><td className="font-mono font-bold">{entry.participant.bib_number}</td><td><b>{entry.participant.last_name.toUpperCase()}</b><br/><span className="text-slate-500">{entry.participant.first_name}</span></td><td>{entry.participant.class_name}</td><td className="font-mono text-xs">{formatElapsed(entry.elapsed_ms)}</td><td><Badge className={statusTone(entry.status)}>{statusLabel(entry.status)}</Badge></td><td className="px-4"><div className="flex justify-end gap-1">{entry.status === "finished" ? <><Button size="icon-sm" variant="ghost" disabled={entry.finish_position === 1} onClick={() => move(entry,-1)}><ArrowUp/></Button><Button size="icon-sm" variant="ghost" disabled={entry.finish_position === ranked.length} onClick={() => move(entry,1)}><ArrowDown/></Button><Button size="icon-sm" variant="ghost" title="Annuler cette arrivée" onClick={() => removeFinish(entry)}><RotateCcw/></Button></> : <Select value={entry.status} onValueChange={(value) => void changeStatus(entry, value as Exclude<EntryStatus,"finished">)}><SelectTrigger className="w-40"><SelectValue/></SelectTrigger><SelectContent><SelectItem value="registered">À courir</SelectItem><SelectItem value="dnf">Abandon</SelectItem><SelectItem value="exempt">Dispensé</SelectItem><SelectItem value="absent">Absent</SelectItem></SelectContent></Select>}</div></td></tr>)}</tbody></table></div></div>
-
-          {selectedHeat.challenge_enabled && <div className="race-card rounded-[1.6rem] border bg-white p-5 shadow-sm"><div className="flex items-center gap-2"><Medal className="text-[#d9a700]"/><h3 className="text-lg font-black">Challenge classes</h3></div><p className="mt-1 text-sm text-slate-500">1er = 1 point, 50e = 50 points. Les dispensés, absents et non-finisseurs prennent le rang du dernier arrivé + 1. {selectedHeat.challenge_best_count ? `Les ${selectedHeat.challenge_best_count} meilleurs résultats de chaque classe sont retenus.` : "Tous les élèves comptent."} Le plus petit total gagne.</p><div className="mt-4 grid gap-3 sm:grid-cols-2 xl:grid-cols-3">{challenge.map((item,index) => <div key={item.className} className={`rounded-2xl border p-4 ${index===0 ? "border-yellow-300 bg-yellow-50" : "bg-slate-50"}`}><div className="flex items-center justify-between"><span className="text-2xl font-black">{index+1}</span><Users className="text-slate-400"/></div><p className="mt-2 text-lg font-black">{item.className}</p><p className="text-3xl font-black text-[#1154b3]">{item.points} pts</p><p className="text-xs text-slate-500">{item.retained} résultat(s) retenu(s) · {item.members} engagé(s) · pénalité {item.penalty} pts</p></div>)}</div></div>}
-        </>}
-      </div>
-    </section>}
-  </div>;
+export function CourseStep({event,onChange}:{event:RaceEvent;onChange:(event:RaceEvent)=>void}){
+ const classes=useMemo(()=>[...new Set(event.participants.map(p=>p.className).filter(Boolean))].sort((a,b)=>a.localeCompare(b,"fr")),[event.participants]);
+ const [cloudEvent,setCloudEvent]=useState<CloudEvent|null>(null),[heats,setHeats]=useState<CloudHeat[]>([]),[selectedHeatId,setSelectedHeatId]=useState<string>(),[entries,setEntries]=useState<HeatEntry[]>([]),[stations,setStations]=useState<StationInfo[]>([]),[loading,setLoading]=useState(false);
+ const [createOpen,setCreateOpen]=useState(false),[shareOpen,setShareOpen]=useState(false),[brandingOpen,setBrandingOpen]=useState(false),[qr,setQr]=useState("");
+ const [heatName,setHeatName]=useState(""),[selectedClasses,setSelectedClasses]=useState<Set<string>>(new Set()),[sexFilter,setSexFilter]=useState("all"),[challengeEnabled,setChallengeEnabled]=useState(true),[bestCount,setBestCount]=useState(10),[stationCode,setStationCode]=useState("");
+ const selectedHeat=heats.find(h=>h.id===selectedHeatId),ranked=entries.filter(e=>e.status==="finished").sort((a,b)=>(a.finish_position??9999)-(b.finish_position??9999));
+ const classResults=selectedHeat?.challenge_enabled?challenge(entries,selectedHeat.challenge_classes.length?selectedHeat.challenge_classes:selectedHeat.selected_classes,selectedHeat.challenge_best_count):[];
+ const branding=event.resultBranding??{title:event.name,subtitle:[event.date,event.location].filter(Boolean).join(" · ")};
+ const refreshOwner=async()=>{try{const s=await ownerApi<OwnerState>("owner_state",{localEventId:event.id});setCloudEvent(s.event);setHeats(s.heats??[]);if(!selectedHeatId&&s.heats?.length)setSelectedHeatId(s.heats[0].id)}catch(e){toast.error(raceErrorMessage(e))}};
+ const refreshEntries=async(id=selectedHeatId)=>{if(!id)return;try{const r=await ownerApi<HeatResponse>("heat_entries",{heatId:id});setEntries(r.entries??[]);setStations(r.stations??[]);setHeats(items=>items.map(h=>h.id===r.heat.id?{...h,...r.heat}:h))}catch(e){toast.error(raceErrorMessage(e))}};
+ useEffect(()=>{void refreshOwner()},[]); // eslint-disable-line react-hooks/exhaustive-deps
+ useEffect(()=>{if(!selectedHeatId){setEntries([]);setStations([]);return}setStationCode(localStorage.getItem(stationKey(selectedHeatId))??"");void refreshEntries(selectedHeatId)},[selectedHeatId]); // eslint-disable-line react-hooks/exhaustive-deps
+ useEffect(()=>{if(!selectedHeatId||selectedHeat?.status!=="running")return;const t=setInterval(()=>void refreshEntries(selectedHeatId),1800);return()=>clearInterval(t)},[selectedHeatId,selectedHeat?.status]); // eslint-disable-line react-hooks/exhaustive-deps
+ useEffect(()=>{if(!shareOpen||!stationCode)return;const u=new URL(window.location.href);u.searchParams.set("station",stationCode);QRCode.toDataURL(u.toString(),{width:360,margin:2}).then(setQr).catch(()=>setQr(""))},[shareOpen,stationCode]);
+ const sync=async()=>{if(!event.participants.length)return toast.error("Importez d’abord les élèves.");setLoading(true);try{const r=await ownerApi<{event:CloudEvent;participantCount:number}>("sync_event",{event});setCloudEvent(r.event);toast.success(`${r.participantCount} élèves prêts pour les courses.`);await refreshOwner();setCreateOpen(true)}catch(e){toast.error(raceErrorMessage(e))}finally{setLoading(false)}};
+ const toggleClass=(c:string)=>setSelectedClasses(cur=>{const n=new Set(cur);n.has(c)?n.delete(c):n.add(c);return n});
+ const createHeat=async()=>{if(!cloudEvent)return;const selected=[...selectedClasses];if(!heatName.trim()||!selected.length)return toast.error("Indiquez un nom et au moins une classe.");const ps=event.participants.filter(p=>selected.includes(p.className)&&(sexFilter==="all"||(sexFilter==="female"?isFemale(p.sex):isMale(p.sex))));if(!ps.length)return toast.error("Aucun élève ne correspond à cette sélection.");setLoading(true);try{const r=await ownerApi<{heat:CloudHeat;participantCount:number}>("create_heat",{eventId:cloudEvent.id,name:heatName.trim(),selectedClasses:selected,sexFilter,challengeEnabled,challengeClasses:selected,challengeBestCount:challengeEnabled?bestCount:null,participantIds:ps.map(p=>p.id)});setCreateOpen(false);setHeatName("");setSelectedClasses(new Set());await refreshOwner();setSelectedHeatId(r.heat.id);toast.success(`Course créée avec ${r.participantCount} élèves.`)}catch(e){toast.error(raceErrorMessage(e))}finally{setLoading(false)}};
+ const start=async()=>{if(!selectedHeatId||!confirm("Lancer cette course ? Le chronomètre démarre maintenant."))return;try{const r=await ownerApi<{stationCode:string}>("start_heat",{heatId:selectedHeatId});localStorage.setItem(stationKey(selectedHeatId),r.stationCode);setStationCode(r.stationCode);await refreshOwner();await refreshEntries();setShareOpen(true)}catch(e){toast.error(raceErrorMessage(e))}};
+ const finish=async()=>{if(!selectedHeatId||!confirm("Terminer la course ? Les élèves encore à courir seront classés non-finisseurs."))return;try{await ownerApi("finish_heat",{heatId:selectedHeatId});await refreshOwner();await refreshEntries();toast.success("Course terminée. Les résultats sont prêts.")}catch(e){toast.error(raceErrorMessage(e))}};
+ const changeStatus=async(entry:HeatEntry,status:Exclude<EntryStatus,"finished">)=>{try{await ownerApi("set_entry_status",{entryId:entry.id,status});await refreshEntries()}catch(e){toast.error(raceErrorMessage(e))}};
+ const removeFinish=async(entry:HeatEntry)=>{if(!confirm(`Annuler l’arrivée de ${entry.participant.first_name} ${entry.participant.last_name} ?`))return;try{await ownerApi("remove_finish",{entryId:entry.id});await refreshEntries()}catch(e){toast.error(raceErrorMessage(e))}};
+ const move=async(entry:HeatEntry,delta:number)=>{if(!entry.finish_position)return;try{await ownerApi("reorder_finish",{entryId:entry.id,position:Math.max(1,entry.finish_position+delta)});await refreshEntries()}catch(e){toast.error(raceErrorMessage(e))}};
+ const deleteHeat=async()=>{if(!selectedHeatId||!selectedHeat||!confirm(`Supprimer « ${selectedHeat.name} » ?`))return;try{await ownerApi("delete_heat",{heatId:selectedHeatId});localStorage.removeItem(stationKey(selectedHeatId));setSelectedHeatId(undefined);setEntries([]);await refreshOwner()}catch(e){toast.error(raceErrorMessage(e))}};
+ const header=()=>`<header>${branding.logoDataUrl?`<img src="${esc(branding.logoDataUrl)}">`:""}<div><h1>${esc(branding.title||event.name)}</h1><p>${esc(branding.subtitle||"")}</p></div></header>`;
+ const printIndividual=()=>{if(!selectedHeat)return;const rows=ranked.map(e=>`<tr><td>${e.finish_position}</td><td>${e.participant.bib_number}</td><td><b>${esc(e.participant.last_name.toUpperCase())}</b> ${esc(e.participant.first_name)}</td><td>${esc(e.participant.class_name)}</td><td>${esc(formatElapsed(e.elapsed_ms))}</td></tr>`).join("");printWindow(`${selectedHeat.name} - individuel`,`${header()}<h2>${esc(selectedHeat.name)} · Classement individuel</h2><table><thead><tr><th>Rang</th><th>Dossard</th><th>Élève</th><th>Classe</th><th>Temps</th></tr></thead><tbody>${rows}</tbody></table>`)};
+ const printClasses=()=>{if(!selectedHeat||!classResults.length)return;const rows=classResults.map((r,i)=>`<tr><td class="podium">${i+1}</td><td><b>${esc(r.className)}</b></td><td>${r.points}</td><td>${r.retained}</td></tr>`).join("");printWindow(`${selectedHeat.name} - challenge classes`,`${header()}<h2>Challenge interclasses</h2><p>${selectedHeat.challenge_best_count?`${selectedHeat.challenge_best_count} meilleurs résultats retenus par classe.`:"Tous les élèves comptent."} Le plus petit total gagne.</p><table><thead><tr><th>Rang</th><th>Classe</th><th>Points</th><th>Résultats retenus</th></tr></thead><tbody>${rows}</tbody></table>`)};
+ const social=async(kind:"individual"|"classes",story=false)=>{if(!selectedHeat)return;const canvas=document.createElement("canvas");canvas.width=1080;canvas.height=story?1920:1080;const ctx=canvas.getContext("2d");if(!ctx)return;ctx.fillStyle="#0f4da8";ctx.fillRect(0,0,canvas.width,canvas.height);ctx.fillStyle="#fed60b";ctx.fillRect(0,0,canvas.width,24);ctx.fillStyle="#ffffff";ctx.font="900 58px Arial";ctx.fillText(branding.title||event.name,70,110);ctx.font="700 28px Arial";ctx.fillStyle="#cfe0ff";ctx.fillText(branding.subtitle||selectedHeat.name,70,155);ctx.font="900 72px Arial";ctx.fillStyle="#ffffff";ctx.fillText(kind==="classes"?"CHALLENGE INTERCLASSES":"RÉSULTATS",70,story?330:285);const data=kind==="classes"?classResults.slice(0,5).map((r,i)=>`${i+1}. ${r.className}  ·  ${r.points} pts`):ranked.slice(0,5).map(e=>`${e.finish_position}. ${e.participant.first_name} ${e.participant.last_name.toUpperCase()}  ·  ${e.participant.class_name}`);ctx.font="700 38px Arial";data.forEach((line,i)=>{ctx.fillStyle=i===0?"#fed60b":"#ffffff";ctx.fillText(line,80,(story?500:410)+i*90)});ctx.font="700 24px Arial";ctx.fillStyle="#cfe0ff";ctx.fillText("Gestion Cross · L. RIGAUX",80,canvas.height-70);const a=document.createElement("a");a.download=`${selectedHeat.name}-${kind}-${story?"story":"post"}.png`.replace(/\s+/g,"-");a.href=canvas.toDataURL("image/png");a.click()};
+ const uploadLogo=(file?:File)=>{if(!file)return;const reader=new FileReader();reader.onload=()=>onChange({...event,resultBranding:{...branding,logoDataUrl:String(reader.result)}});reader.readAsDataURL(file)};
+ if(!cloudEvent)return <section className="mx-auto max-w-4xl rounded-[2rem] border border-blue-100 bg-white p-8 text-center shadow-sm"><Cloud className="mx-auto size-14 text-[#1154b3]"/><h2 className="mt-4 text-3xl font-black">Activer la gestion des courses</h2><p className="mx-auto mt-2 max-w-2xl text-[#65738e]">Synchronisez les participants pour gérer les arrivées sur 1 à 4 postes, les classements et le challenge interclasses.</p><Button size="lg" className="mt-6" disabled={loading} onClick={()=>void sync()}><Cloud/>Activer le mode course</Button></section>;
+ return <div className="mx-auto max-w-6xl space-y-5">
+  <section className="rounded-[1.8rem] border border-blue-100 bg-white p-5 shadow-sm"><div className="flex flex-col gap-4 lg:flex-row lg:items-center"><div className="flex-1"><p className="text-xs font-black uppercase tracking-widest text-[#1154b3]">Courses du cross</p><h2 className="text-2xl font-black">{selectedHeat?.name||"Choisissez une course"}</h2></div><div className="flex flex-wrap gap-2">{heats.length>0&&<Select value={selectedHeatId} onValueChange={setSelectedHeatId}><SelectTrigger className="w-56"><SelectValue placeholder="Choisir une course"/></SelectTrigger><SelectContent>{heats.map(h=><SelectItem key={h.id} value={h.id}>{h.name}</SelectItem>)}</SelectContent></Select>}<Button onClick={()=>setCreateOpen(true)}><Plus/>Nouvelle course</Button><Button variant="outline" onClick={()=>setBrandingOpen(true)}><Palette/>En-tête & visuels</Button></div></div></section>
+  {!heats.length?<section className="rounded-[1.8rem] border border-dashed border-blue-200 bg-blue-50/40 p-10 text-center"><Flag className="mx-auto size-12 text-[#1154b3]"/><h3 className="mt-3 text-xl font-black">Aucune course créée</h3><p className="mt-1 text-slate-500">Créez par exemple « 6e filles », « 6e garçons », etc.</p><Button className="mt-5" onClick={()=>setCreateOpen(true)}><Plus/>Créer la première course</Button></section>:selectedHeat&&<>
+   <section className="rounded-[1.8rem] border bg-white p-5 shadow-sm"><div className="flex flex-wrap items-center justify-between gap-3"><div className="flex items-center gap-3"><Badge className={selectedHeat.status==="running"?"bg-emerald-100 text-emerald-800":selectedHeat.status==="finished"?"bg-blue-100 text-blue-800":"bg-amber-100 text-amber-800"}>{selectedHeat.status==="draft"?"À préparer":selectedHeat.status==="running"?"En cours":"Terminée"}</Badge><span className="text-sm text-slate-500">{entries.length} engagés · {ranked.length} arrivés</span></div><div className="flex gap-2">{selectedHeat.status==="draft"&&<Button onClick={()=>void start()}><Play/>Lancer la course</Button>}{selectedHeat.status==="running"&&<><Button onClick={()=>setShareOpen(true)}><Share2/>Ajouter un poste</Button><Button variant="destructive" onClick={()=>void finish()}>Terminer</Button></>}{selectedHeat.status!=="running"&&<Button variant="ghost" className="text-red-600" onClick={()=>void deleteHeat()}><Trash2/></Button>}</div></div>
+    {selectedHeat.status==="running"&&<div className="mt-5 grid gap-3 sm:grid-cols-2 lg:grid-cols-4">{[1,2,3,4].map(n=>{const s=stations.find(x=>x.station_order===n),count=entries.filter(e=>e.station_order===n&&e.status==="finished").length;return <div key={n} className={`rounded-2xl border p-4 ${s?"border-emerald-200 bg-emerald-50":"bg-slate-50"}`}><p className="text-xs font-bold text-slate-500">Poste {n} · {letters[n-1]}</p><p className="mt-1 text-xl font-black">{s?`${count} scans`:"Disponible"}</p><p className="text-xs text-slate-500">{n===1?"Début de la course":"Suite de la course"}</p></div>})}</div>}
+   </section>
+   {selectedHeat.status==="draft"&&<section className="rounded-[1.8rem] border bg-white p-5"><h3 className="font-black">Préparer les élèves</h3><p className="mb-4 text-sm text-slate-500">Vous pouvez indiquer les dispensés et absents avant le départ.</p><div className="max-h-[420px] overflow-auto rounded-xl border"><table className="w-full text-sm"><thead className="sticky top-0 bg-slate-50"><tr><th className="p-3 text-left">Dossard</th><th className="p-3 text-left">Élève</th><th className="p-3 text-left">Classe</th><th className="p-3 text-left">Statut</th></tr></thead><tbody>{entries.map(e=><tr key={e.id} className="border-t"><td className="p-3 font-mono font-bold">{e.participant.bib_number}</td><td className="p-3 font-bold">{e.participant.last_name.toUpperCase()} {e.participant.first_name}</td><td className="p-3">{e.participant.class_name}</td><td className="p-3"><Select value={e.status} onValueChange={v=>void changeStatus(e,v as Exclude<EntryStatus,"finished">)}><SelectTrigger className="w-40"><SelectValue/></SelectTrigger><SelectContent><SelectItem value="registered">À courir</SelectItem><SelectItem value="exempt">Dispensé</SelectItem><SelectItem value="absent">Absent</SelectItem><SelectItem value="dnf">Non-finisseur</SelectItem></SelectContent></Select></td></tr>)}</tbody></table></div></section>}
+   {selectedHeat.status!=="draft"&&<section className="overflow-hidden rounded-[1.8rem] border bg-white"><div className="flex items-center justify-between border-b p-5"><div><h3 className="font-black">Arrivées</h3><p className="text-xs text-slate-500">L’ordre final fusionne automatiquement A → B → C → D.</p></div>{selectedHeat.status==="finished"&&<Badge>{ranked.length} classés</Badge>}</div><div className="max-h-[500px] overflow-auto"><table className="w-full text-sm"><thead className="sticky top-0 bg-slate-50"><tr><th className="p-3 text-left">Rang</th><th className="p-3 text-left">Poste</th><th className="p-3 text-left">Élève</th><th className="p-3 text-left">Classe</th><th className="p-3 text-left">Actions</th></tr></thead><tbody>{ranked.map(e=><tr key={e.id} className="border-t"><td className="p-3 text-lg font-black">{e.finish_position}</td><td className="p-3 font-mono font-bold">{e.station_order?`${letters[e.station_order-1]}${e.station_position}`:"—"}</td><td className="p-3"><b>{e.participant.last_name.toUpperCase()}</b> {e.participant.first_name}</td><td className="p-3">{e.participant.class_name}</td><td className="p-3"><div className="flex gap-1">{selectedHeat.status==="finished"&&<><Button size="icon-sm" variant="outline" onClick={()=>void move(e,-1)}><ArrowUp/></Button><Button size="icon-sm" variant="outline" onClick={()=>void move(e,1)}><ArrowDown/></Button></>}<Button size="sm" variant="ghost" className="text-red-600" onClick={()=>void removeFinish(e)}>Annuler</Button></div></td></tr>)}</tbody></table></div></section>}
+   {selectedHeat.status==="finished"&&<section className="rounded-[1.8rem] border border-blue-100 bg-white p-6"><p className="text-xs font-black uppercase tracking-widest text-[#1154b3]">Résultats</p><h3 className="mt-1 text-2xl font-black">Imprimer ou publier</h3><p className="mt-1 text-sm text-slate-500">Les résultats individuels et le challenge interclasses sont volontairement séparés pour garder la surprise.</p><div className="mt-5 grid gap-4 md:grid-cols-2"><div className="rounded-2xl border p-5"><Medal className="text-[#1154b3]"/><h4 className="mt-2 text-lg font-black">Classement individuel</h4><p className="text-sm text-slate-500">Aucune information sur le challenge classes.</p><div className="mt-4 flex flex-wrap gap-2"><Button onClick={printIndividual}><Printer/>Imprimer</Button><Button variant="outline" onClick={()=>void social("individual",false)}><Square/>Post</Button><Button variant="outline" onClick={()=>void social("individual",true)}><ImageIcon/>Story</Button></div></div><div className="rounded-2xl border p-5"><Users className="text-[#1154b3]"/><h4 className="mt-2 text-lg font-black">Challenge interclasses</h4><p className="text-sm text-slate-500">À imprimer ou publier uniquement au moment de l’annonce.</p><div className="mt-4 flex flex-wrap gap-2"><Button disabled={!classResults.length} onClick={printClasses}><Printer/>Imprimer</Button><Button variant="outline" disabled={!classResults.length} onClick={()=>void social("classes",false)}><Square/>Post</Button><Button variant="outline" disabled={!classResults.length} onClick={()=>void social("classes",true)}><ImageIcon/>Story</Button></div></div></div></section>}
+  </>}
+  <Dialog open={createOpen} onOpenChange={setCreateOpen}><DialogContent className="sm:max-w-2xl"><DialogHeader><DialogTitle>Créer une course</DialogTitle><DialogDescription>Un écran simple : nom, classes, catégorie et règle du challenge.</DialogDescription></DialogHeader><div className="space-y-5"><div><Label>Nom de la course</Label><Input value={heatName} onChange={e=>setHeatName(e.target.value)} placeholder="Ex. 6e filles"/></div><div><Label>Catégorie</Label><Select value={sexFilter} onValueChange={setSexFilter}><SelectTrigger><SelectValue/></SelectTrigger><SelectContent><SelectItem value="all">Tous</SelectItem><SelectItem value="female">Filles</SelectItem><SelectItem value="male">Garçons</SelectItem></SelectContent></Select></div><div><Label>Classes</Label><div className="mt-2 flex flex-wrap gap-2">{classes.map(c=><button key={c} type="button" onClick={()=>toggleClass(c)} className={`rounded-full border px-3 py-2 text-sm font-bold ${selectedClasses.has(c)?"border-[#1154b3] bg-[#1154b3] text-white":"bg-white"}`}>{c}</button>)}</div></div><div className="rounded-2xl bg-slate-50 p-4"><label className="flex items-center gap-3 font-bold"><input type="checkbox" checked={challengeEnabled} onChange={e=>setChallengeEnabled(e.target.checked)}/>Activer le challenge interclasses</label>{challengeEnabled&&<div className="mt-3"><Label>Nombre de meilleurs résultats retenus par classe</Label><Input type="number" min={1} value={bestCount} onChange={e=>setBestCount(Math.max(1,Number(e.target.value)||1))}/></div>}</div></div><DialogFooter><Button variant="outline" onClick={()=>setCreateOpen(false)}>Annuler</Button><Button disabled={loading} onClick={()=>void createHeat()}>Créer la course</Button></DialogFooter></DialogContent></Dialog>
+  <Dialog open={shareOpen} onOpenChange={setShareOpen}><DialogContent className="sm:max-w-lg"><DialogHeader><DialogTitle>Ajouter un poste d’arrivée</DialogTitle><DialogDescription>Scannez le QR code ou saisissez le code sur un autre PC, iPad ou téléphone. Le nouvel appareil choisira ensuite « Début de la course » ou « Suite de la course ».</DialogDescription></DialogHeader><div className="text-center">{qr&&<img src={qr} alt="QR code pour rejoindre la course" className="mx-auto size-60 rounded-2xl border bg-white p-3"/>}<p className="mt-4 text-xs font-black uppercase tracking-widest text-slate-500">Code de course</p><p className="font-mono text-4xl font-black tracking-[.18em] text-[#1154b3]">{stationCode||"—"}</p><p className="mt-2 text-sm text-slate-500">Jusqu’à 4 postes simultanés. Aucun rang de départ n’est à saisir.</p></div><DialogFooter className="sm:justify-center"><Button variant="outline" onClick={async()=>{if(stationCode){await navigator.clipboard.writeText(stationCode);toast.success("Code copié.")}}}><Link2/>Copier le code</Button><Button onClick={async()=>{if(!stationCode)return;const u=new URL(window.location.href);u.searchParams.set("station",stationCode);if(navigator.share)await navigator.share({title:selectedHeat?.name||"Gestion Cross",url:u.toString()});else{await navigator.clipboard.writeText(u.toString());toast.success("Lien copié.")}}}><Share2/>Partager</Button></DialogFooter></DialogContent></Dialog>
+  <Dialog open={brandingOpen} onOpenChange={setBrandingOpen}><DialogContent className="sm:max-w-xl"><DialogHeader><DialogTitle>Personnaliser les résultats</DialogTitle><DialogDescription>Cet en-tête sera utilisé sur les impressions et les visuels réseaux sociaux.</DialogDescription></DialogHeader><div className="space-y-4"><div><Label>Titre</Label><Input value={branding.title??""} onChange={e=>onChange({...event,resultBranding:{...branding,title:e.target.value}})} placeholder={event.name}/></div><div><Label>Sous-titre</Label><Input value={branding.subtitle??""} onChange={e=>onChange({...event,resultBranding:{...branding,subtitle:e.target.value}})} placeholder="Date · lieu · établissement"/></div><div><Label>Logo / image d’en-tête</Label><Input type="file" accept="image/png,image/jpeg" onChange={e=>uploadLogo(e.target.files?.[0])}/>{branding.logoDataUrl&&<div className="mt-3 flex items-center gap-3"><img src={branding.logoDataUrl} alt="Logo" className="h-16 max-w-40 object-contain"/><Button size="sm" variant="outline" onClick={()=>onChange({...event,resultBranding:{...branding,logoDataUrl:undefined}})}>Retirer</Button></div>}</div></div><DialogFooter><Button onClick={()=>setBrandingOpen(false)}>Terminer</Button></DialogFooter></DialogContent></Dialog>
+ </div>;
 }
