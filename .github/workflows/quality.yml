@@ -17,6 +17,9 @@ jobs:
         with:
           ref: ${{ github.event.pull_request.head.ref || github.ref_name }}
 
+      - name: Appliquer les correctifs ciblés de l’audit
+        run: node scripts/apply-audit-ui-hardening.mjs
+
       - name: Installer pnpm
         uses: pnpm/action-setup@v4
         with:
@@ -31,14 +34,14 @@ jobs:
       - name: Actualiser les dépendances et le lockfile
         run: pnpm install --no-frozen-lockfile
 
-      - name: Enregistrer le lockfile actualisé
+      - name: Enregistrer les fichiers générés
         if: github.event_name == 'pull_request' && github.event.pull_request.head.repo.full_name == github.repository
         run: |
-          if ! git diff --quiet -- pnpm-lock.yaml; then
+          if ! git diff --quiet -- components/dossard/course-step.tsx pnpm-lock.yaml; then
             git config user.name "github-actions[bot]"
             git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
-            git add pnpm-lock.yaml
-            git commit -m "Actualiser pnpm-lock.yaml"
+            git add components/dossard/course-step.tsx pnpm-lock.yaml
+            git commit -m "Appliquer les correctifs UI et actualiser le lockfile"
             git push origin HEAD:${{ github.event.pull_request.head.ref }}
           fi
 
