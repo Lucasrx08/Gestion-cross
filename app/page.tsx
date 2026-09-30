@@ -15,6 +15,7 @@ import { publicAsset } from "@/lib/dossard/assets";
 export default function Home(){
  const [events,setEvents]=useState<RaceEvent[]>([]),[templates,setTemplates]=useState<BibTemplate[]>([]),[active,setActive]=useState<RaceEvent>(),[loading,setLoading]=useState(true),[stationCode,setStationCode]=useState(""),[saveStatus,setSaveStatus]=useState<"saved"|"saving"|"error">("saved");
  const activeRef=useRef<RaceEvent|undefined>(undefined);
+ useEffect(()=>{window.scrollTo({top:0,behavior:"auto"})},[active?.id]);
  useEffect(()=>{const params=new URLSearchParams(window.location.search);Promise.resolve().then(()=>setStationCode((params.get("station")??"").trim().toUpperCase()));Promise.all([listEvents(),listTemplates()]).then(([e,t])=>{setEvents(e);setTemplates(t)}).catch(()=>toast.error("Le stockage local n’a pas pu être ouvert.")).finally(()=>setLoading(false))},[]);
  useEffect(()=>{activeRef.current=active;if(!active)return;const timer=setTimeout(()=>{saveEvent(active).then(saved=>{setEvents(items=>[saved,...items.filter(e=>e.id!==saved.id)]);setSaveStatus("saved")}).catch(()=>setSaveStatus("error"))},550);return()=>clearTimeout(timer)},[active]);
  const openEvent=(event:RaceEvent)=>{activeRef.current=event;setSaveStatus("saved");setActive(event)};

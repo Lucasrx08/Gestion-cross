@@ -1,7 +1,7 @@
 "use client";
 
 import Image from "next/image";
-import { useState, type CSSProperties } from "react";
+import { useEffect, useState, type CSSProperties } from "react";
 import { ArrowLeft, CheckCircle2, FileImage, FileOutput, Flag, LayoutTemplate, MoreVertical, ShieldCheck, Trash2, Users } from "lucide-react";
 import { AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent, AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle } from "@/components/ui/alert-dialog";
 import { Button } from "@/components/ui/button";
@@ -40,6 +40,7 @@ export function EventWorkspace({ event, templates, saveStatus, onChange, onBack,
   const [singleId, setSingleId] = useState<string>();
   const [purgeOpen, setPurgeOpen] = useState(false);
   const current = steps.findIndex((item) => item.value === step);
+  useEffect(() => { window.scrollTo({ top: 0, behavior: "auto" }); }, [step]);
   const branding = event.resultBranding;
   const primary = branding?.primaryColor || "#1154b3";
   const accent = branding?.accentColor || "#fed60b";
