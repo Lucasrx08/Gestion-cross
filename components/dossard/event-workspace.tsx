@@ -2,7 +2,8 @@
 
 import Image from "next/image";
 import { useEffect, useState, type CSSProperties } from "react";
-import { ArrowLeft, CheckCircle2, FileImage, FileOutput, Flag, LayoutTemplate, MoreVertical, ShieldCheck, Trash2, Users } from "lucide-react";
+import { ArrowLeft, CheckCircle2, CloudOff, FileImage, FileOutput, Flag, LayoutTemplate, MoreVertical, ShieldCheck, Trash2, Users } from "lucide-react";
+import { toast } from "sonner";
 import { AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent, AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle } from "@/components/ui/alert-dialog";
 import { Button } from "@/components/ui/button";
 import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuSeparator, DropdownMenuTrigger } from "@/components/ui/dropdown-menu";
@@ -15,6 +16,7 @@ import { TemplateStep } from "./template-step";
 import { VerificationStep } from "./verification-step";
 import type { BibTemplate, RaceEvent } from "@/lib/dossard/types";
 import { publicAsset } from "@/lib/dossard/assets";
+import { ownerApi, raceErrorMessage } from "@/lib/dossard/race-api";
 
 type Step = "participants" | "template" | "layout" | "verify" | "export" | "course";
 const steps: Array<{ value: Step; label: string; icon: typeof Users }> = [
@@ -39,12 +41,27 @@ export function EventWorkspace({ event, templates, saveStatus, onChange, onBack,
   const [participantIssueFilter, setParticipantIssueFilter] = useState<"all" | "errors" | "warnings">("all");
   const [singleId, setSingleId] = useState<string>();
   const [purgeOpen, setPurgeOpen] = useState(false);
+  const [serverPurgeOpen, setServerPurgeOpen] = useState(false);
+  const [serverPurging, setServerPurging] = useState(false);
   const current = steps.findIndex((item) => item.value === step);
   useEffect(() => { window.scrollTo({ top: 0, behavior: "auto" }); }, [step]);
   const branding = event.resultBranding;
   const primary = branding?.primaryColor || "#1154b3";
   const accent = branding?.accentColor || "#fed60b";
   const logo = branding?.logoDataUrl || publicAsset("/logo-bon-sauveur-cross.png");
+
+  const purgeServerCopy = async () => {
+    setServerPurging(true);
+    try {
+      const result = await ownerApi<{ deleted: boolean }>("delete_event", { localEventId: event.id });
+      toast.success(result.deleted ? "Copie partagée supprimée du serveur." : "Aucune copie partagée n’était présente sur le serveur.");
+      setServerPurgeOpen(false);
+    } catch (error) {
+      toast.error(raceErrorMessage(error));
+    } finally {
+      setServerPurging(false);
+    }
+  };
 
   return (
     <div className="cross-workspace min-h-screen" style={{ "--cross-primary": primary, "--cross-accent": accent } as CSSProperties}>
@@ -71,8 +88,9 @@ export function EventWorkspace({ event, templates, saveStatus, onChange, onBack,
               <Button size="icon-sm" variant="ghost" aria-label="Options du cross" className="shrink-0 text-muted-foreground"><MoreVertical /></Button>
             </DropdownMenuTrigger>
             <DropdownMenuContent align="end">
-              <DropdownMenuItem disabled><ShieldCheck /> Données du cross sur cet appareil</DropdownMenuItem>
+              <DropdownMenuItem disabled><ShieldCheck /> Données locales + courses partagées sécurisées</DropdownMenuItem>
               <DropdownMenuSeparator />
+              <DropdownMenuItem onSelect={() => setServerPurgeOpen(true)}><CloudOff /> Supprimer la copie partagée du serveur</DropdownMenuItem>
               <DropdownMenuItem className="text-red-600" onSelect={() => setPurgeOpen(true)}><Trash2 /> Supprimer les données nominatives locales</DropdownMenuItem>
             </DropdownMenuContent>
           </DropdownMenu>
@@ -114,11 +132,24 @@ export function EventWorkspace({ event, templates, saveStatus, onChange, onBack,
         <AlertDialogContent>
           <AlertDialogHeader>
             <AlertDialogTitle>Supprimer les données nominatives locales ?</AlertDialogTitle>
-            <AlertDialogDescription>Les {event.participants.length} participants seront effacés de cet appareil. Le modèle de dossard restera disponible.</AlertDialogDescription>
+            <AlertDialogDescription>Les {event.participants.length} participants seront effacés de cet appareil. Le modèle de dossard restera disponible. Cette action ne supprime pas automatiquement les courses déjà partagées sur le serveur.</AlertDialogDescription>
           </AlertDialogHeader>
           <AlertDialogFooter>
             <AlertDialogCancel>Annuler</AlertDialogCancel>
-            <AlertDialogAction className="bg-red-600" onClick={() => { onChange({ ...event, participants: [], sourceFileName: undefined }); setSelectedIds(new Set()); setSingleId(undefined); }}>Supprimer</AlertDialogAction>
+            <AlertDialogAction className="bg-red-600" onClick={() => { onChange({ ...event, participants: [], sourceFileName: undefined }); setSelectedIds(new Set()); setSingleId(undefined); }}>Supprimer localement</AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
+
+      <AlertDialog open={serverPurgeOpen} onOpenChange={setServerPurgeOpen}>
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle>Supprimer la copie partagée du serveur ?</AlertDialogTitle>
+            <AlertDialogDescription>Les courses, postes d’arrivée, scans, classements et participants synchronisés de ce cross seront supprimés du serveur. Vos données locales et vos dossards resteront sur cet appareil. Une course en cours doit d’abord être terminée.</AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel disabled={serverPurging}>Annuler</AlertDialogCancel>
+            <AlertDialogAction className="bg-red-600" disabled={serverPurging} onClick={() => void purgeServerCopy()}>{serverPurging ? "Suppression…" : "Supprimer du serveur"}</AlertDialogAction>
           </AlertDialogFooter>
         </AlertDialogContent>
       </AlertDialog>
