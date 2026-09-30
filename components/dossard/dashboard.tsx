@@ -1,13 +1,15 @@
 "use client";
 
 import { useMemo, useState } from "react";
-import { CalendarDays, ChevronRight, Flag, MapPin, Plus, QrCode, Trash2, Users } from "lucide-react";
+import Image from "next/image";
+import { ArrowUpRight, CalendarDays, ChevronRight, Flag, MapPin, Medal, Plus, QrCode, ScanLine, Trash2, Users } from "lucide-react";
 import { AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent, AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle } from "@/components/ui/alert-dialog";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
+import { publicAsset } from "@/lib/dossard/assets";
 import { createRaceEvent } from "@/lib/dossard/defaults";
 import type { BibTemplate, RaceEvent } from "@/lib/dossard/types";
 
@@ -40,49 +42,56 @@ export function Dashboard({ events, templates, onCreate, onOpen, onDelete, onJoi
   };
 
   return (
-    <main className="mx-auto w-full max-w-[1500px] px-4 py-6 sm:px-6 lg:px-10 lg:py-9">
-      <section className="race-band race-card relative overflow-hidden rounded-[2rem] px-6 py-9 text-white sm:px-10 lg:px-12 lg:py-12">
-        <div className="race-grid absolute inset-0 opacity-20" />
-        <div className="absolute -right-16 -top-20 size-72 rounded-full border-[46px] border-[#fed60b]/90 opacity-80" />
-        <div className="relative max-w-4xl">
-          <p className="text-sm font-black uppercase tracking-[.24em] text-[#fed60b]">Gestion Cross</p>
-          <h1 className="mt-2 text-3xl font-black tracking-tight sm:text-5xl">Tout votre cross, du dossard au classement.</h1>
-          <p className="mt-4 max-w-3xl text-base leading-relaxed text-blue-100 sm:text-lg">Importez les participants, créez les dossards, gérez les arrivées sur plusieurs postes et publiez vos résultats individuels ou interclasses.</p>
-          <div className="mt-7 flex flex-wrap gap-3">
-            <Button size="lg" className="bg-[#fed60b] font-black text-[#102347] hover:bg-[#ffe45b]" onClick={() => setCreateOpen(true)}><Plus />Créer un cross</Button>
-            <Button size="lg" variant="outline" className="border-white/40 bg-white/10 font-black text-white hover:bg-white/20 hover:text-white" onClick={() => setJoinOpen(true)}><QrCode />Rejoindre une course</Button>
+    <main className="cross-shell py-6 sm:py-9">
+      <section className="cross-panel grid overflow-hidden lg:grid-cols-[1.5fr_1fr]">
+        <div className="p-6 sm:p-9 lg:p-11">
+          <span className="inline-flex items-center gap-2 rounded-full bg-blue-50 px-3 py-1.5 text-xs font-bold text-primary"><span className="size-2 rounded-full bg-[#fed60b]" />Votre cross, bien organisé</span>
+          <h1 className="mt-5 max-w-2xl text-[clamp(2rem,4.3vw,3.6rem)] font-bold leading-[1.1] tracking-[-.045em]">Du premier dossard<br className="hidden sm:block" /> au <span className="text-primary">dernier arrivé.</span></h1>
+          <p className="mt-5 max-w-xl text-base leading-relaxed text-muted-foreground">Préparez votre événement à votre rythme. Le jour du cross, tout est prêt pour les courses et leurs résultats.</p>
+          <div className="cross-actions mt-7">
+            <Button size="lg" onClick={() => setCreateOpen(true)}><Plus />Créer un cross</Button>
+            <Button size="lg" variant="outline" onClick={() => setJoinOpen(true)}><QrCode />Rejoindre une course</Button>
           </div>
+          <p className="mt-5 flex items-center gap-2 text-xs font-medium text-muted-foreground"><span className="size-1.5 shrink-0 rounded-full bg-primary" />Participants, dossards, arrivées et classements</p>
+        </div>
+        <div className="relative flex flex-col items-center justify-center gap-4 border-t border-blue-100 bg-[#f0f5ff] px-6 py-7 lg:border-l lg:border-t-0">
+          <div aria-hidden className="absolute inset-x-7 top-0 h-1 rounded-b-full bg-[#fed60b]" />
+          <Image src={publicAsset("/logo-bon-sauveur-cross.png")} alt="Cross du Bon Sauveur — Saint-Lô" width={300} height={300} priority className="size-44 rounded-[1.75rem] bg-white object-contain shadow-sm sm:size-60 lg:size-72" />
+          <div className="flex items-center gap-2 rounded-full border border-blue-100 bg-white px-4 py-2 text-sm font-semibold text-[#173970]"><Flag className="size-4 text-primary" />Prêts pour le départ</div>
         </div>
       </section>
 
-      <section className="mt-5 grid grid-cols-2 gap-3 lg:grid-cols-3">
-        {[{ label: "Cross", value: events.length, icon: Flag }, { label: "Participants", value: total, icon: Users }, { label: "Modèles de dossard", value: templates.length, icon: QrCode }].map((stat) => (
-          <article key={stat.label} className="race-card rounded-2xl border border-white bg-white p-4 sm:p-5">
-            <div className="flex items-center justify-between"><p className="text-sm font-bold text-[#65738e]">{stat.label}</p><span className="grid size-9 place-items-center rounded-xl bg-[#eaf2ff] text-[#1154b3]"><stat.icon className="size-5" /></span></div>
-            <p className="mt-2 text-3xl font-black text-[#102347]">{stat.value}</p>
+      <section aria-label="Vue d’ensemble" className="mt-5 grid gap-3 sm:grid-cols-3">
+        {[{ label: "Cross enregistrés", value: events.length, icon: Flag }, { label: "Participants", value: total, icon: Users }, { label: "Modèles de dossard", value: templates.length, icon: QrCode }].map((stat) => (
+          <article key={stat.label} className="cross-panel flex items-center gap-4 p-5">
+            <span className="cross-icon"><stat.icon className="size-5" /></span>
+            <div><p className="text-2xl font-bold leading-tight tabular-nums">{stat.value}</p><p className="mt-1 text-sm text-muted-foreground">{stat.label}</p></div>
           </article>
         ))}
       </section>
 
-      <section className="mt-7">
-        <div className="mb-4 flex items-end justify-between"><div><p className="text-xs font-black uppercase tracking-widest text-[#1154b3]">Organisation</p><h2 className="text-2xl font-black">Mes cross</h2></div>{events.length > 0 && <Button onClick={() => setCreateOpen(true)}><Plus />Nouveau cross</Button>}</div>
+      <section className="mt-9">
+        <div className="mb-5 flex flex-wrap items-center justify-between gap-4"><div><p className="cross-eyebrow">Votre espace d’organisation</p><h2 className="mt-1 text-2xl font-bold tracking-tight">Mes cross</h2></div>{events.length > 0 && <Button variant="outline" onClick={() => setCreateOpen(true)}><Plus />Nouveau cross</Button>}</div>
         {!events.length ? (
-          <div className="race-surface rounded-[1.7rem] border border-blue-100 p-10 text-center"><Flag className="mx-auto size-12 text-[#1154b3]" /><h3 className="mt-3 text-xl font-black">Créez votre premier cross</h3><p className="mt-1 text-[#65738e]">L’application vous accompagne ensuite pour les participants, les dossards, les courses et les résultats.</p></div>
+          <div className="cross-panel flex flex-col items-center p-7 text-center sm:p-10"><span className="cross-icon bg-[#fff5bc]"><Flag className="size-6" /></span><h3 className="mt-4 text-xl font-bold">Votre prochain cross commence ici</h3><p className="mt-2 max-w-lg text-sm leading-relaxed text-muted-foreground">Ajoutez votre événement, importez les élèves et préparez les courses. Vous retrouverez tout dans cet espace.</p><Button className="mt-5" onClick={() => setCreateOpen(true)}>Créer mon premier cross <ArrowUpRight /></Button></div>
         ) : (
           <div className="grid gap-4 md:grid-cols-2 xl:grid-cols-3">
             {events.map((event) => (
-              <article key={event.id} className="race-card relative overflow-hidden rounded-[1.6rem] border border-blue-100 bg-white p-5">
-                <div className="absolute inset-x-0 top-0 h-1.5 bg-gradient-to-r from-[#fed60b] to-[#1154b3]" />
-                <div className="flex justify-between gap-3"><div><Badge className="bg-[#fff3a9] text-[#173970]">{event.year}</Badge><h3 className="mt-3 text-xl font-black">{event.name}</h3></div><Button size="icon-sm" variant="ghost" className="text-slate-400 hover:text-red-600" onClick={() => setDeleteCandidate(event)}><Trash2 /></Button></div>
-                <div className="mt-4 space-y-2 text-sm text-[#65738e]"><p className="flex gap-2"><Users className="text-[#1154b3]" />{event.participants.length} participant(s)</p><p className="flex gap-2"><CalendarDays className="text-[#1154b3]" />{event.date ? new Date(event.date + "T12:00:00").toLocaleDateString("fr-FR", { dateStyle: "long" }) : "Date à préciser"}</p><p className="flex gap-2"><MapPin className="text-[#1154b3]" />{event.location || "Lieu à préciser"}</p></div>
-                <Button className="mt-5 w-full justify-between font-bold" onClick={() => onOpen(event)}>Gérer ce cross <ChevronRight /></Button>
+              <article key={event.id} className="cross-panel flex flex-col p-5 transition-shadow hover:shadow-md sm:p-6">
+                <div className="flex items-center justify-between gap-3"><span className="cross-icon bg-[#fff5bc]"><Flag className="size-5" /></span><div className="flex items-center gap-2"><Badge variant="secondary">{event.year}</Badge><Button size="icon-sm" variant="ghost" aria-label={`Supprimer ${event.name}`} className="text-slate-400 hover:text-red-600" onClick={() => setDeleteCandidate(event)}><Trash2 /></Button></div></div>
+                <h3 className="mt-5 text-xl font-bold tracking-tight">{event.name}</h3>
+                <div className="mt-4 flex-1 space-y-2.5 text-sm text-muted-foreground"><p className="flex items-start gap-2.5"><Users className="mt-0.5 size-4 shrink-0 text-primary" /><span>{event.participants.length} participant(s)</span></p><p className="flex items-start gap-2.5"><CalendarDays className="mt-0.5 size-4 shrink-0 text-primary" /><span>{event.date ? new Date(event.date + "T12:00:00").toLocaleDateString("fr-FR", { dateStyle: "long" }) : "Date à préciser"}</span></p><p className="flex items-start gap-2.5"><MapPin className="mt-0.5 size-4 shrink-0 text-primary" /><span>{event.location || "Lieu à préciser"}</span></p></div>
+                <Button className="mt-6 w-full justify-between" onClick={() => onOpen(event)}>Gérer ce cross <ChevronRight /></Button>
               </article>
             ))}
           </div>
         )}
       </section>
 
-      <footer className="mt-10 border-t border-blue-100 py-6 text-center text-xs font-bold text-[#7b879c]">Gestion Cross · Créé par L. RIGAUX</footer>
+      <section aria-label="Les trois temps du cross" className="mt-9 grid gap-4 border-t border-border pt-7 md:grid-cols-3">
+        {[{ icon: Users, title: "Avant le départ", text: "Importez les élèves et préparez les dossards et les courses." }, { icon: ScanLine, title: "Sur l’arrivée", text: "Scannez ou saisissez les dossards depuis vos postes d’arrivée." }, { icon: Medal, title: "Après la course", text: "Retrouvez les classements et le challenge interclasses." }].map((item) => <div key={item.title} className="flex items-start gap-3"><span className="cross-icon size-10 bg-white"><item.icon className="size-5" /></span><div><h3 className="text-sm font-bold">{item.title}</h3><p className="mt-1 text-sm leading-relaxed text-muted-foreground">{item.text}</p></div></div>)}
+      </section>
+      <footer className="mt-8 flex flex-wrap items-center justify-between gap-2 py-5 text-xs text-muted-foreground"><span className="font-semibold text-primary">Gestion Cross</span><span>Créé par L. RIGAUX</span></footer>
 
       <Dialog open={createOpen} onOpenChange={(open) => { setCreateOpen(open); if (!open) reset(); }}>
         <DialogContent className="sm:max-w-xl"><DialogHeader><DialogTitle>Créer un cross</DialogTitle><DialogDescription>Créez l’événement général. Les courses seront ajoutées ensuite.</DialogDescription></DialogHeader><div className="grid gap-4 sm:grid-cols-2"><div className="sm:col-span-2"><Label>Nom *</Label><Input value={name} placeholder="Ex. Cross du Bon Sauveur" onChange={(event) => setName(event.target.value)} /></div><div><Label>Année</Label><Input type="number" value={year} onChange={(event) => setYear(Number(event.target.value))} /></div><div><Label>Date</Label><Input type="date" value={date} onChange={(event) => setDate(event.target.value)} /></div><div className="sm:col-span-2"><Label>Lieu</Label><Input value={location} onChange={(event) => setLocation(event.target.value)} /></div></div><DialogFooter><Button variant="outline" onClick={() => setCreateOpen(false)}>Annuler</Button><Button disabled={!name.trim()} onClick={async () => { await onCreate(createRaceEvent({ name, year, location, date })); setCreateOpen(false); reset(); }}>Créer le cross</Button></DialogFooter></DialogContent>

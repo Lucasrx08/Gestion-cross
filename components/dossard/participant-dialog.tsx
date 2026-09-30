@@ -53,8 +53,9 @@ function Editor({ participant, onOpenChange, onSave }: Omit<ParticipantDialogPro
       <div className="grid gap-4 sm:grid-cols-2">
         {fields.map(([key, label, required]) => (
           <div key={key}>
-            <Label className="mb-2">{label}{required ? " *" : ""}</Label>
+            <Label htmlFor={`participant-${key}`} className="mb-2">{label}{required ? " *" : ""}</Label>
             <Input
+              id={`participant-${key}`}
               value={values[key] ?? ""}
               onChange={(event) => setValues((current) => ({ ...current, [key]: event.target.value }))}
             />

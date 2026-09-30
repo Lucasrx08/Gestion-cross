@@ -4,6 +4,7 @@ import { useMemo, useRef, useState } from "react";
 import { AlertTriangle, Check, CheckCircle2, LockKeyhole, ScanBarcode, ShieldCheck, X } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
+import { StepHeading } from "./step-heading";
 import { BarcodePreview } from "./code-preview";
 import { normalizeScannedIdentifier } from "@/lib/dossard/identifiers";
 import { previewElementValue } from "@/lib/dossard/preview";
@@ -60,10 +61,11 @@ export function VerificationStep({
 
   return (
     <div className="space-y-6">
+  <StepHeading icon={CheckCircle2} title="Contrôle avant impression" description="Vérifiez la liste et testez vos codes avant de générer les dossards." />
       <section className={`rounded-2xl border p-5 ${ready ? "border-emerald-200 bg-emerald-50" : "border-red-200 bg-red-50"}`}>
-        <div className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
-          <div className="flex gap-3">
-            <span className={`grid size-11 place-items-center rounded-2xl text-white ${ready ? "bg-emerald-600" : "bg-red-600"}`}>
+        <div className="flex flex-col gap-4 xl:flex-row xl:items-center xl:justify-between">
+          <div className="flex items-start gap-3">
+            <span className={`grid size-11 shrink-0 place-items-center rounded-2xl text-white ${ready ? "bg-emerald-600" : "bg-red-600"}`}>
               {ready ? <Check /> : <X />}
             </span>
             <div>
@@ -77,13 +79,13 @@ export function VerificationStep({
 
       <section className="grid gap-3 sm:grid-cols-2 xl:grid-cols-3">
         {checks.map((check) => (
-          <article key={check.id} className="rounded-2xl border bg-white p-4">
+          <article key={check.id} className="cross-panel p-4">
             <div className="flex justify-between">
               <div>
                 <p className="text-sm text-slate-500">{check.label}</p>
                 <p className="text-2xl font-black">{check.value}</p>
               </div>
-              <span className={`grid size-8 place-items-center rounded-full ${check.status === "ok" ? "bg-emerald-100 text-emerald-700" : check.status === "warning" ? "bg-amber-100 text-amber-700" : "bg-red-100 text-red-700"}`}>
+              <span className={`grid size-8 shrink-0 place-items-center rounded-full ${check.status === "ok" ? "bg-emerald-100 text-emerald-700" : check.status === "warning" ? "bg-amber-100 text-amber-700" : "bg-red-100 text-red-700"}`}>
                 {check.status === "ok" ? <Check /> : <AlertTriangle />}
               </span>
             </div>
@@ -94,7 +96,7 @@ export function VerificationStep({
 
       {invalidParticipants.length > 0 && (
         <section className="rounded-2xl border border-red-200 bg-red-50 p-4">
-          <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
+          <div className="flex flex-col gap-3 xl:flex-row xl:items-start xl:justify-between">
             <div>
               <p className="font-black text-red-900">{invalidParticipants.length} participant{invalidParticipants.length > 1 ? "s à corriger" : " à corriger"}</p>
               <p className="text-sm text-red-800">La ligne et la donnée manquante sont indiquées ci-dessous.</p>
@@ -117,7 +119,7 @@ export function VerificationStep({
       )}
 
       {reduced > 0 && (
-        <section className="flex gap-3 rounded-2xl border border-amber-200 bg-amber-50 p-4">
+        <section className="flex items-start gap-3 rounded-2xl border border-amber-200 bg-amber-50 p-4">
           <AlertTriangle className="shrink-0 text-amber-700" />
           <div>
             <p className="font-bold text-amber-900">Alerte non bloquante · {reduced} nom{reduced > 1 ? "s longs seront légèrement réduits" : " long sera légèrement réduit"}</p>
@@ -127,9 +129,9 @@ export function VerificationStep({
       )}
 
       <section className="grid gap-5 lg:grid-cols-[minmax(0,1fr)_minmax(320px,.75fr)]">
-        <div className="rounded-2xl border bg-white p-5">
-          <div className="mb-5 flex gap-3">
-            <span className="grid size-10 place-items-center rounded-xl bg-[#0d397b] text-white"><ScanBarcode /></span>
+        <div className="cross-panel p-5">
+          <div className="mb-5 flex items-start gap-3">
+            <span className="grid size-10 shrink-0 place-items-center rounded-xl bg-[#0d397b] text-white"><ScanBarcode /></span>
             <div>
               <h2 className="font-black">Tester la douchette</h2>
               <p className="text-sm text-slate-500">Scannez le code test puis vérifiez la valeur reçue.</p>
@@ -138,14 +140,14 @@ export function VerificationStep({
           {expected ? (
             <>
               <div className="mx-auto h-24 max-w-md rounded-xl border p-2"><BarcodePreview value={expected} /></div>
-              <div className="mt-4 flex flex-col gap-2 sm:flex-row">
+              <div className="mt-4 grid gap-2 sm:grid-cols-2">
                 <Input
                   ref={inputRef}
                   value={value}
                   onChange={(inputEvent) => { setValue(inputEvent.target.value); setResult("idle"); }}
                   onKeyDown={(keyboardEvent) => { if (keyboardEvent.key === "Enter") { keyboardEvent.preventDefault(); evaluate(); } }}
                   placeholder="Cliquez ici puis scannez"
-                  className="font-mono"
+                  aria-label="Code reçu par la douchette" className="font-mono sm:col-span-2"
                 />
                 <Button variant="outline" onClick={() => { setValue(""); setResult("idle"); inputRef.current?.focus(); }}>Démarrer</Button>
                 <Button disabled={!value} onClick={evaluate}>Vérifier</Button>
@@ -168,9 +170,9 @@ export function VerificationStep({
         <aside className="rounded-2xl border border-blue-200 bg-blue-50 p-5">
           <div className="flex gap-2 text-blue-900"><ShieldCheck /><h2 className="font-black">Confidentialité vérifiée</h2></div>
           <ul className="mt-4 space-y-3 text-sm">
-            <li className="flex gap-2"><Check className="text-emerald-600" />Les fichiers restent dans ce navigateur.</li>
-            <li className="flex gap-2"><Check className="text-emerald-600" />Les codes contiennent uniquement l’identifiant.</li>
-            <li className="flex gap-2"><Check className="text-emerald-600" />Aucune liste n’est publiée.</li>
+            <li className="flex gap-2"><Check className="shrink-0 text-emerald-600" />Les fichiers restent dans ce navigateur.</li>
+            <li className="flex gap-2"><Check className="shrink-0 text-emerald-600" />Les codes contiennent uniquement l’identifiant.</li>
+            <li className="flex gap-2"><Check className="shrink-0 text-emerald-600" />Aucune liste n’est publiée.</li>
           </ul>
           <div className="mt-5 flex gap-2 rounded-xl bg-white/70 p-3 text-sm text-blue-900"><LockKeyhole />Les données sont liées à cet appareil.</div>
         </aside>

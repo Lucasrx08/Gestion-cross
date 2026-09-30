@@ -4,6 +4,7 @@ import { useMemo, useState } from "react";
 import { Download, FileDown, FileSpreadsheet, Printer, Search, ShieldAlert } from "lucide-react";
 import { toast } from "sonner";
 import { Badge } from "@/components/ui/badge";
+import { StepHeading } from "./step-heading";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
@@ -99,6 +100,7 @@ export function ExportStep({ event, selectedIds, initialSingleId }: ExportStepPr
 
   return (
     <div className="space-y-6">
+  <StepHeading icon={Printer} title="Imprimer les dossards" description="Choisissez les élèves à imprimer et téléchargez votre PDF prêt pour le format A4." />
       {!ready && (
         <section className="flex gap-3 rounded-2xl border border-red-200 bg-red-50 p-4 text-red-800">
           <ShieldAlert />
@@ -110,17 +112,17 @@ export function ExportStep({ event, selectedIds, initialSingleId }: ExportStepPr
       )}
 
       <section className="grid gap-5 xl:grid-cols-[minmax(0,1fr)_360px]">
-        <div className="race-card rounded-[1.6rem] border border-blue-100 bg-white p-5">
+        <div className="cross-panel p-5">
           <p className="text-xs font-bold uppercase tracking-wider text-[#1154b3]">PDF A4 haute qualité</p>
           <h2 className="mb-5 text-xl font-black">Choisir les dossards</h2>
           <RadioGroup value={mode} onValueChange={(value) => setMode(value as ExportMode)} className="grid gap-3 sm:grid-cols-2">
             {options.map((option) => (
               <Label
                 key={option.value}
-                className={`cursor-pointer rounded-xl border p-4 ${mode === option.value ? "border-[#1154b3] bg-blue-50 ring-2 ring-blue-700/15" : ""}`}
+                className={`mb-0 cursor-pointer rounded-xl border p-4 ${mode === option.value ? "border-[#1154b3] bg-blue-50 ring-2 ring-blue-700/15" : ""}`}
               >
                 <span className="flex gap-3">
-                  <RadioGroupItem value={option.value} />
+                  <RadioGroupItem value={option.value} className="mt-0.5 shrink-0" />
                   <span>
                     <b className="block">{option.title}</b>
                     <span className="text-sm font-normal text-slate-500">{option.description}</span>
@@ -160,7 +162,7 @@ export function ExportStep({ event, selectedIds, initialSingleId }: ExportStepPr
                       <button
                         key={participant.id}
                         type="button"
-                        className="flex w-full justify-between border-b p-2 text-left last:border-0 hover:bg-slate-50"
+                        className="flex min-h-12 w-full flex-col gap-1 border-b p-3 text-left last:border-0 hover:bg-slate-50"
                         onClick={() => { setSingleId(participant.id); setSearch(""); }}
                       >
                         <b>{participant.lastName} {participant.firstName}</b>
@@ -170,12 +172,12 @@ export function ExportStep({ event, selectedIds, initialSingleId }: ExportStepPr
                   </div>
                 )}
                 {single && (
-                  <div className="mt-3 flex justify-between rounded-lg border border-blue-200 bg-blue-50 p-3">
+                  <div className="mt-3 flex items-start justify-between gap-3 rounded-lg border border-blue-200 bg-blue-50 p-3">
                     <div>
                       <b>{single.lastName} {single.firstName}</b>
                       <p className="text-sm text-slate-500">{single.className} · {single.technicalId}</p>
                     </div>
-                    <Printer className="text-blue-700" />
+                    <Printer className="shrink-0 text-blue-700" />
                   </div>
                 )}
               </div>
@@ -222,13 +224,13 @@ export function ExportStep({ event, selectedIds, initialSingleId }: ExportStepPr
         </aside>
       </section>
 
-      <section className="race-card rounded-[1.6rem] border border-blue-100 bg-white p-5">
+      <section className="cross-panel p-5">
         <div className="flex flex-col gap-4 sm:flex-row sm:justify-between">
           <div>
             <h2 className="flex gap-2 font-black"><FileSpreadsheet className="text-[#1154b3]" /> Exporter la base</h2>
             <p className="text-sm text-slate-500">Identifiant, numéro, nom, prénom, classe et sexe uniquement.</p>
           </div>
-          <div className="flex gap-2">
+          <div className="flex flex-wrap gap-2">
             <Button variant="outline" disabled={!event.participants.length} onClick={() => exportParticipantsCsv(event.participants, event.name)}>CSV</Button>
             <Button variant="outline" disabled={!event.participants.length} onClick={() => exportParticipantsXlsx(event.participants, event.name)}>XLSX</Button>
           </div>

@@ -38,7 +38,7 @@ function MappingDialogContent({
 
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
-      <DialogContent className="max-h-[92vh] overflow-y-auto sm:max-w-3xl">
+      <DialogContent className="max-h-[calc(100dvh-2rem)] overflow-y-auto sm:max-w-3xl">
         <DialogHeader>
           <div className="mb-1 flex gap-2">
             <Badge variant="secondary">{draft.rows.length} lignes</Badge>

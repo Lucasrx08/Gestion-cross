@@ -36,6 +36,12 @@ Le site est public. Les courses préparées et les résultats sont retrouvés de
 
 Le service des courses et sa migration sont versionnés dans `supabase/` ; les fonctions internes sont accessibles uniquement au rôle serveur.
 
+## Présentation et tablettes
+
+La [charte graphique](docs/DESIGN.md) reprend les bleus et le jaune du logo. L’accueil, les cartes, les titres et les commandes suivent la même présentation. Le logo et les couleurs du cross restent personnalisables.
+
+La navigation se répartit sur deux rangées aux formats tablette. Les élèves sont présentés en fiches sous 1280 px, les outils passent à la ligne, les tableaux d’arrivée défilent dans leur cadre et les fenêtres de réglage s’adaptent à la hauteur visible. Les commandes principales mesurent au moins 44 px pour l’usage tactile.
+
 ## Développement
 
 ```bash
