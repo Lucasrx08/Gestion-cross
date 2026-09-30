@@ -136,8 +136,8 @@ export function CourseStep({ event, onChange }: { event: RaceEvent; onChange: (e
     subtitle: event.resultBranding?.subtitle || `${event.location || ""}${event.location ? " · " : ""}${event.year}`,
     logoDataUrl: event.resultBranding?.logoDataUrl,
     primaryColor: event.resultBranding?.primaryColor || "#1154b3",
-    secondaryColor: event.resultBranding?.secondaryColor || "#f198a5",
-    accentColor: event.resultBranding?.accentColor || "#bf1281",
+    secondaryColor: event.resultBranding?.secondaryColor || "#fed60b",
+    accentColor: event.resultBranding?.accentColor || "#173970",
   };
 
   const refreshOwner = async () => {
@@ -158,6 +158,10 @@ export function CourseStep({ event, onChange }: { event: RaceEvent; onChange: (e
       setEntries(result.entries ?? []);
       setStations(result.stations ?? []);
       setHeats((items) => items.map((item) => item.id === result.heat.id ? { ...item, ...result.heat } : item));
+      if (result.heat.station_code) {
+        window.localStorage.setItem(stationKey(result.heat.id), result.heat.station_code);
+        if (activeHeatRef.current === result.heat.id) setStationCode(result.heat.station_code);
+      }
     } catch (error) { toast.error(raceErrorMessage(error)); }
   };
 
@@ -215,7 +219,10 @@ export function CourseStep({ event, onChange }: { event: RaceEvent; onChange: (e
     const selectedOptions = classOptions.filter((option) => selectedClassKeys.has(option.key));
     if (!heatName.trim() || !selectedOptions.length) return toast.error("Indiquez un nom et au moins une classe.");
     const rawClasses = new Set(selectedOptions.flatMap((option) => option.variants));
-    const participants = event.participants.filter((participant) => rawClasses.has(participant.className) && (sexFilter === "all" || (sexFilter === "female" ? isFemale(participant.sex) : isMale(participant.sex))));
+    const classParticipants = event.participants.filter((participant) => rawClasses.has(participant.className));
+    const unknownSex = classParticipants.filter((participant) => !isFemale(participant.sex) && !isMale(participant.sex));
+    if (sexFilter !== "all" && unknownSex.length) return toast.error(`${unknownSex.length} élève(s) ont un sexe manquant ou non reconnu. Corrigez la liste avant de préparer une course Filles/Garçons.`);
+    const participants = classParticipants.filter((participant) => sexFilter === "all" || (sexFilter === "female" ? isFemale(participant.sex) : isMale(participant.sex)));
     if (!participants.length) return toast.error("Aucun élève ne correspond à cette sélection.");
     setLoading(true);
     try {
@@ -291,11 +298,11 @@ export function CourseStep({ event, onChange }: { event: RaceEvent; onChange: (e
   const printWindow = (title: string, body: string) => {
     const popup = window.open("", "_blank", "width=1000,height=800");
     if (!popup) return toast.error("Le navigateur a bloqué la fenêtre d’impression.");
-    const primary = branding.primaryColor || "#1154b3", accent = branding.accentColor || "#bf1281";
+    const primary = branding.primaryColor || "#1154b3", accent = branding.accentColor || "#173970";
     popup.document.write(`<!doctype html><html><head><meta charset="utf-8"><title>${esc(title)}</title><style>@page{margin:14mm}body{font-family:Arial,sans-serif;color:#102347}header{display:flex;align-items:center;gap:18px;border-bottom:5px solid ${esc(accent)};padding-bottom:14px;margin-bottom:24px}header img{max-width:105px;max-height:85px;object-fit:contain}h1{margin:0;color:${esc(primary)}}h2{margin-top:24px;color:${esc(primary)}}p{color:#64748b}table{width:100%;border-collapse:collapse;margin-top:14px}th,td{padding:8px;border-bottom:1px solid #dbe5f2;text-align:left}th{background:${esc(mixColor(primary,"#ffffff",0.9))}}.podium{font-size:18px;font-weight:700}.note{padding:12px;border-radius:10px;background:${esc(mixColor(accent,"#ffffff",0.9))};color:#334155}.footer{margin-top:30px;font-size:11px;color:#94a3b8}</style></head><body>${body}<div class="footer">Gestion Cross · Créé par L. RIGAUX</div></body></html>`);
     popup.document.close(); popup.focus(); window.setTimeout(() => popup.print(), 250);
   };
-  const documentHeader = () => `<header>${branding.logoDataUrl ? `<img src="${esc(branding.logoDataUrl)}">` : ""}<div><h1>${esc(branding.title || event.name)}</h1><p>${esc(branding.subtitle || "")}</p></div></header>`;
+  const documentHeader = () => { const logo = branding.logoDataUrl || new URL("./logo-bon-sauveur-cross.png", window.location.href).toString(); return `<header><img src="${esc(logo)}"><div><h1>${esc(branding.title || event.name)}</h1><p>${esc(branding.subtitle || "")}</p></div></header>`; };
   const printIndividual = () => {
     if (!selectedHeat) return;
     const rows = ranked.map((entry) => `<tr><td>${entry.finish_position}</td><td>${entry.participant.bib_number}</td><td><b>${esc(entry.participant.last_name.toUpperCase())}</b> ${esc(entry.participant.first_name)}</td><td>${esc(entry.participant.class_name)}</td><td>${esc(formatElapsed(entry.elapsed_ms))}</td></tr>`).join("");
@@ -328,24 +335,25 @@ export function CourseStep({ event, onChange }: { event: RaceEvent; onChange: (e
     const width = 1080, height = story ? 1920 : 1080;
     const canvas = document.createElement("canvas"); canvas.width = width; canvas.height = height;
     const ctx = canvas.getContext("2d"); if (!ctx) return;
-    const primary = branding.primaryColor || "#1154b3", secondary = branding.secondaryColor || "#f198a5", accent = branding.accentColor || "#bf1281";
+    const primary = branding.primaryColor || "#1154b3", secondary = branding.secondaryColor || "#fed60b", accent = branding.accentColor || "#173970";
     const gradient = ctx.createLinearGradient(0, 0, width, height); gradient.addColorStop(0, primary); gradient.addColorStop(1, mixColor(primary, "#000000", 0.25));
     ctx.fillStyle = gradient; ctx.fillRect(0, 0, width, height);
     ctx.fillStyle = accent; ctx.fillRect(0, 0, width, story ? 22 : 18);
     ctx.globalAlpha = 0.28; ctx.fillStyle = secondary; ctx.beginPath(); ctx.arc(width * 0.92, height * 0.08, story ? 220 : 170, 0, Math.PI * 2); ctx.fill(); ctx.globalAlpha = 1;
     let logoHeight = 0;
-    if (branding.logoDataUrl) {
-      try { const image = await loadCanvasImage(branding.logoDataUrl); const maxW = story ? 280 : 220, maxH = story ? 250 : 190; const ratio = Math.min(maxW / image.width, maxH / image.height); const w = image.width * ratio, h = image.height * ratio; ctx.drawImage(image, 70, 58, w, h); logoHeight = h; } catch { /* export sans logo si image illisible */ }
+    const socialLogo = branding.logoDataUrl || new URL("./logo-bon-sauveur-cross.png", window.location.href).toString();
+    if (socialLogo) {
+      try { const image = await loadCanvasImage(socialLogo); const maxW = story ? 280 : 220, maxH = story ? 250 : 190; const ratio = Math.min(maxW / image.width, maxH / image.height); const w = image.width * ratio, h = image.height * ratio; ctx.drawImage(image, 70, 58, w, h); logoHeight = h; } catch { /* export sans logo si image illisible */ }
     }
     const titleY = Math.max(story ? 345 : 260, 80 + logoHeight);
-    ctx.fillStyle = "#ffffff"; ctx.font = `900 ${story ? 54 : 48}px Arial`; ctx.fillText(branding.title || event.name, 70, titleY - 82);
+    ctx.fillStyle = "#ffffff"; let titleSize = story ? 54 : 48; const titleText = branding.title || event.name; do { ctx.font = `900 ${titleSize}px Arial`; if (ctx.measureText(titleText).width <= width - 140) break; titleSize -= 2; } while (titleSize > 28); ctx.fillText(titleText, 70, titleY - 82, width - 140);
     ctx.font = `700 ${story ? 30 : 26}px Arial`; ctx.fillStyle = mixColor("#ffffff", secondary, 0.28); ctx.fillText(branding.subtitle || "", 70, titleY - 38);
     ctx.fillStyle = accent; ctx.fillRect(70, titleY, width - 140, story ? 112 : 96);
     ctx.fillStyle = "#ffffff"; ctx.font = `900 ${story ? 64 : 58}px Arial`; ctx.fillText(kind === "classes" ? "CHALLENGE INTERCLASSES" : "RÉSULTATS", 98, titleY + (story ? 76 : 66));
     const panelY = titleY + (story ? 150 : 130), panelH = height - panelY - 115;
     ctx.fillStyle = mixColor(secondary, "#ffffff", 0.92); ctx.beginPath(); ctx.roundRect(55, panelY, width - 110, panelH, 34); ctx.fill();
     ctx.strokeStyle = secondary; ctx.lineWidth = 4; ctx.stroke();
-    ctx.fillStyle = primary; ctx.font = `900 ${story ? 48 : 42}px Arial`; ctx.fillText(selectedHeat.name, 90, panelY + 80);
+    ctx.fillStyle = primary; let heatSize = story ? 48 : 42; do { ctx.font = `900 ${heatSize}px Arial`; if (ctx.measureText(selectedHeat.name).width <= width - 180) break; heatSize -= 2; } while (heatSize > 26); ctx.fillText(selectedHeat.name, 90, panelY + 80, width - 180);
     const lines = kind === "classes" ? classResults.slice(0, story ? 8 : 6).map((result, index) => `${index + 1}. ${result.className}  ·  ${result.points} pts`) : ranked.slice(0, story ? 8 : 6).map((entry) => `${entry.finish_position}. ${entry.participant.first_name} ${entry.participant.last_name.toUpperCase()}  ·  ${entry.participant.class_name}`);
     ctx.font = `700 ${story ? 38 : 32}px Arial`;
     lines.forEach((line, index) => { ctx.fillStyle = index === 0 ? accent : primary; ctx.fillText(line, 95, panelY + 155 + index * (story ? 92 : 74), width - 190); });
