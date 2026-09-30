@@ -1,6 +1,8 @@
 name: Contrôles qualité
 
 on:
+  push:
+    branches: ["main"]
   pull_request:
     branches: ["main"]
   workflow_dispatch:
@@ -29,8 +31,17 @@ jobs:
       - name: Installer les dépendances
         run: pnpm install --frozen-lockfile
 
+      - name: Vérifier TypeScript
+        run: pnpm exec tsc --noEmit
+
       - name: Vérifier ESLint
         run: pnpm run lint
+
+      - name: Tester les règles de course et le challenge
+        run: node --import tsx scripts/race-tests.mts
+
+      - name: Tester les imports, codes et PDF
+        run: node --import tsx scripts/acceptance-tests.mts
 
       - name: Compiler la version GitHub Pages
         run: pnpm run build:github
