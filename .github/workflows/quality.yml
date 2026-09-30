@@ -1,0 +1,51 @@
+name: Contrôles qualité
+
+on:
+  pull_request:
+    branches: ["main"]
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+jobs:
+  quality:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Récupérer la branche
+        uses: actions/checkout@v4
+        with:
+          ref: ${{ github.event.pull_request.head.ref || github.ref_name }}
+
+      - name: Installer pnpm
+        uses: pnpm/action-setup@v4
+        with:
+          version: 11.25.0
+
+      - name: Installer Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: pnpm
+
+      - name: Actualiser les dépendances et le lockfile
+        run: pnpm install --no-frozen-lockfile
+
+      - name: Enregistrer le lockfile actualisé
+        if: github.event_name == 'pull_request' && github.event.pull_request.head.repo.full_name == github.repository
+        run: |
+          if ! git diff --quiet -- pnpm-lock.yaml; then
+            git config user.name "github-actions[bot]"
+            git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+            git add pnpm-lock.yaml
+            git commit -m "Actualiser pnpm-lock.yaml"
+            git push origin HEAD:${{ github.event.pull_request.head.ref }}
+          fi
+
+      - name: Vérifier ESLint
+        run: pnpm run lint
+
+      - name: Compiler la version GitHub Pages
+        run: pnpm run build:github
+        env:
+          GITHUB_PAGES: "true"
