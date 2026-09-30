@@ -1,0 +1,3 @@
+[functions.race-api]
+# Requests use the existing organiser key or race code; no Supabase Auth JWT.
+verify_jwt = false

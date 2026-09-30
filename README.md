@@ -15,7 +15,7 @@ Application web locale-first pour générer les dossards de n’importe quelle c
 - export CSV/XLSX et sauvegarde des modèles ;
 - purge des données nominatives d’un événement.
 
-Les données élèves restent dans le navigateur : aucun fichier participant n’est envoyé au serveur dans cette version.
+Les listes et les modèles de dossard sont enregistrés dans le navigateur de l’organisateur. L’activation du mode course synchronise les participants avec le service partagé pour permettre la gestion des arrivées sur plusieurs appareils.
 
 ## Site public
 
@@ -23,7 +23,18 @@ La branche `main` est automatiquement publiée avec GitHub Pages :
 
 <https://lucasrx08.github.io/Gestion-cross/>
 
-Le site est public, mais les courses, modèles et listes importées restent enregistrés uniquement dans le navigateur de chaque utilisateur.
+Le site est public. Les courses préparées et les résultats sont retrouvés depuis l’appareil organisateur grâce à sa clé locale. Les postes d’arrivée rejoignent uniquement la course partagée par son code, son lien ou son QR code.
+
+## Préparer et gérer les courses
+
+- Dans « Courses & résultats », préparer plusieurs courses avec leurs classes, le sexe, le challenge et un horaire prévu facultatif.
+- Les courses restent enregistrées au statut « Prête ». Leur modification conserve les absents et dispensés déjà renseignés pour les élèves conservés.
+- Le programme est trié par horaire. Un clic sur « Lancer » démarre le chronomètre et affiche le partage des postes d’arrivée.
+- Les postes acceptent le numéro visible du dossard (ex. `17`), le numéro avec des zéros (ex. `0017`) et le code scanné. Un échec conserve la saisie pour pouvoir la corriger.
+- Après la course, consulter les résultats, imprimer / enregistrer en PDF et télécharger les classements et les challenges dans des fichiers Excel séparés. Les exports du programme regroupent les courses terminées, avec une feuille par course.
+- Challenge : tous les élèves comptent. Arrivé = rang ; absent ou dispensé = dernier arrivé + 1 ; abandon / non-finisseur = dernier arrivé + 10. La classe avec le plus petit total gagne.
+
+Le service des courses et sa migration sont versionnés dans `supabase/` ; les fonctions internes sont accessibles uniquement au rôle serveur.
 
 ## Développement
 
@@ -36,6 +47,7 @@ Contrôles :
 
 ```bash
 pnpm exec tsc --noEmit
+node --import tsx scripts/race-tests.mts
 node --import tsx scripts/acceptance-tests.mts
 pnpm build
 ```
@@ -44,7 +56,7 @@ La documentation d’architecture, le modèle de données et la trajectoire SaaS
 
 ## Structure
 
-- `app/` : interface et parcours en cinq étapes ;
+- `app/` : interface et parcours en six étapes ;
 - `components/dossard/` : participants, modèle, éditeur, vérification, export ;
 - `lib/dossard/` : types, import, validation, stockage, codes et PDF ;
 - `scripts/acceptance-tests.mts` : scénarios d’acceptation automatisés ;

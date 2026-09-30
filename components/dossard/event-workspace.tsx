@@ -1,7 +1,7 @@
 "use client";
 
 import Image from "next/image";
-import { useMemo, useState } from "react";
+import { useMemo, useState, type CSSProperties } from "react";
 import { ArrowLeft, CheckCircle2, FileImage, FileOutput, Flag, LayoutTemplate, MoreVertical, ShieldCheck, Trash2, Users } from "lucide-react";
 import { AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent, AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle } from "@/components/ui/alert-dialog";
 import { Button } from "@/components/ui/button";
@@ -47,7 +47,7 @@ export function EventWorkspace({ event, templates, saveStatus, onChange, onBack,
   const headerBackground = useMemo(() => `linear-gradient(110deg, ${primary} 0%, ${primary} 58%, color-mix(in srgb, ${primary} 78%, white) 100%)`, [primary]);
 
   return (
-    <div className="min-h-screen">
+    <div className="min-h-screen" style={{ "--cross-primary": primary } as CSSProperties}>
       <header className="sticky top-0 z-40 border-b border-black/10 text-white shadow-md" style={{ background: headerBackground }}>
         <div className="mx-auto flex h-[4.25rem] max-w-[1500px] items-center gap-3 px-3 sm:px-5 lg:px-7">
           <Button size="icon-sm" variant="ghost" className="shrink-0 text-white hover:bg-white/15 hover:text-white" onClick={() => void onBack()}>
@@ -81,15 +81,14 @@ export function EventWorkspace({ event, templates, saveStatus, onChange, onBack,
 
       <main className="mx-auto max-w-[1500px] px-3 py-4 sm:px-5 lg:px-7">
         <Tabs value={step} onValueChange={(value) => setStep(value as Step)}>
-          <div className="mb-5 overflow-x-auto pb-1">
-            <TabsList className="race-card flex h-auto min-w-[960px] w-full rounded-2xl border border-blue-100 bg-white p-1.5">
-              {steps.map((item, index) => {
+          <div className="mb-4 rounded-2xl border border-slate-200/80 bg-white p-1.5 shadow-sm sm:mb-6 sm:p-2">
+            <TabsList aria-label="Étapes du cross" className="cross-steps grid w-full grid-cols-3 gap-1 bg-transparent sm:grid-cols-6 sm:gap-1.5">
+              {steps.map((item) => {
                 const Icon = item.icon;
                 return (
-                  <TabsTrigger key={item.value} value={item.value} className="min-w-0 flex-1 gap-2 rounded-xl px-3 py-2.5 font-bold data-[state=active]:bg-[#1154b3] data-[state=active]:text-white">
-                    <span className="grid size-6 shrink-0 place-items-center rounded-full border text-[11px]">{index + 1}</span>
-                    <Icon className="size-4 shrink-0" />
-                    <span className="whitespace-nowrap">{item.label}</span>
+                  <TabsTrigger key={item.value} value={item.value} className="cross-step min-w-0 flex-col gap-1.5 rounded-xl px-1 py-3 text-xs font-bold sm:py-3.5 lg:flex-row lg:gap-2 lg:px-2 lg:text-sm">
+                    <Icon className="size-4 shrink-0 sm:size-[18px]" />
+                    <span className="whitespace-normal text-center leading-tight">{item.label}</span>
                   </TabsTrigger>
                 );
               })}
