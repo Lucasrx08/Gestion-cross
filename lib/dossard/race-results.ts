@@ -4,9 +4,39 @@ import { formatElapsed, type CloudHeat, type HeatEntry } from "./race-api";
 const labels = { registered: "À courir", finished: "Arrivé", dnf: "Abandon", exempt: "Dispensé", absent: "Absent" };
 function fileName(value: string) { return value.replace(/[\\/:*?"<>|]/g, "-").trim() || "résultats"; }
 
+function overallChallenge(courses: Array<{ heat: CloudHeat; entries: HeatEntry[] }>) {
+  const totals = new Map<string, { className: string; points: number; members: number; courses: number }>();
+  courses.filter(({ heat }) => heat.challenge_enabled).forEach(({ heat, entries }) => {
+    buildChallenge(entries, heat.challenge_classes.length ? heat.challenge_classes : heat.selected_classes).forEach((result) => {
+      const key = classKey(result.className);
+      const current = totals.get(key) ?? { className: result.className, points: 0, members: 0, courses: 0 };
+      current.points += result.points;
+      current.members += result.members;
+      current.courses += 1;
+      totals.set(key, current);
+    });
+  });
+  return [...totals.values()].sort((a, b) => a.points - b.points || a.className.localeCompare(b.className, "fr"));
+}
+
 export async function exportRaceResults(courses: Array<{ heat: CloudHeat; entries: HeatEntry[] }>, name: string, kind: "individual" | "classes") {
   const XLSX = await import("xlsx");
   const book = XLSX.utils.book_new();
+
+  if (kind === "classes" && courses.filter(({ heat }) => heat.challenge_enabled).length > 1) {
+    const rows: unknown[][] = [
+      ["Challenge interclasses général"],
+      [challengeRule],
+      ["Le total général additionne les points obtenus par chaque classe dans toutes les courses terminées incluses dans cet export."],
+      [],
+      ["Rang", "Classe", "Points cumulés", "Élèves comptabilisés", "Courses"],
+    ];
+    overallChallenge(courses).forEach((result, index) => rows.push([index + 1, result.className, result.points, result.members, result.courses]));
+    const sheet = XLSX.utils.aoa_to_sheet(rows);
+    sheet["!cols"] = [8, 30, 18, 24, 12].map((wch) => ({ wch }));
+    XLSX.utils.book_append_sheet(book, sheet, "Classement général");
+  }
+
   for (const [index, { heat, entries }] of courses.entries()) {
     const rows: unknown[][] = [[heat.name], []];
     if (kind === "individual") {

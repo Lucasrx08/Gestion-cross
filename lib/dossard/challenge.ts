@@ -1,7 +1,18 @@
 import type { HeatEntry } from "./race-api";
 
 export function classKey(value: string) {
-  return value.normalize("NFD").replace(/[\u0300-\u036f]/g, "").toUpperCase().replace(/[^A-Z0-9]+/g, " ").trim().replace(/\s+/g, " ");
+  const normalized = value
+    .normalize("NFD")
+    .replace(/[\u0300-\u036f]/g, "")
+    .toUpperCase()
+    .replace(/[^A-Z0-9]+/g, " ")
+    .trim()
+    .replace(/\s+/g, " ");
+  // 6e, 6ème, 6eme, 6 E et leurs variantes avec nom de classe partagent la même clé.
+  return normalized
+    .replace(/^([3456])\s*(?:E|EME)(?=\s|$)/, "$1EME")
+    .replace(/^2\s*(?:NDE|DE)(?=\s|$)/, "2NDE")
+    .replace(/^1\s*(?:ERE|RE)(?=\s|$)/, "1ERE");
 }
 
 export function challengePenalties(entries: HeatEntry[]) {
