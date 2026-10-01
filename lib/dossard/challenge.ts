@@ -15,6 +15,35 @@ export function classKey(value: string) {
     .replace(/^1\s*(?:ERE|RE)(?=\s|$)/, "1ERE");
 }
 
+
+export function gradeCategory(value: string) {
+  const key = classKey(value);
+  const match = key.match(/^(6EME|5EME|4EME|3EME|2NDE|1ERE|TERMINALE|TERM|CM1|CM2|CE1|CE2|CP)(?:\\s|$)/);
+  if (!match) return key || "Sans catégorie";
+  const labels: Record<string, string> = {
+    "6EME": "6e", "5EME": "5e", "4EME": "4e", "3EME": "3e",
+    "2NDE": "2nde", "1ERE": "1re", "TERMINALE": "Terminale", "TERM": "Terminale",
+    "CM1": "CM1", "CM2": "CM2", "CE1": "CE1", "CE2": "CE2", "CP": "CP",
+  };
+  return labels[match[1]];
+}
+
+export function rankWithinCategory(entries: HeatEntry[]) {
+  const ranked = entries
+    .filter((entry) => entry.status === "finished" && entry.finish_position != null)
+    .slice()
+    .sort((a, b) => (a.finish_position ?? Infinity) - (b.finish_position ?? Infinity));
+  const ranks = new Map<string, { category: string; rank: number }>();
+  const counts = new Map<string, number>();
+  ranked.forEach((entry) => {
+    const category = gradeCategory(entry.participant.class_name);
+    const rank = (counts.get(category) ?? 0) + 1;
+    counts.set(category, rank);
+    ranks.set(entry.id, { category, rank });
+  });
+  return ranks;
+}
+
 export function challengePenalties(entries: HeatEntry[]) {
   const last = Math.max(0, ...entries.filter((entry) => entry.status === "finished").map((entry) => entry.finish_position ?? 0));
   return { last, absent: last + 1, exempt: last + 1, dnf: last + 10 };
