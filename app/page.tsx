@@ -9,30 +9,298 @@ import { EventWorkspace } from "@/components/dossard/event-workspace";
 import { RaceStation } from "@/components/dossard/race-station";
 import { Button } from "@/components/ui/button";
 import { downloadCrossBackup, restoreCrossBackup } from "@/lib/dossard/backup";
-import { deleteEvent, listEvents, listTemplates, saveEvent, saveTemplate } from "@/lib/dossard/storage";
+import {
+  deleteEvent,
+  listEvents,
+  listTemplates,
+  saveEvent,
+  saveTemplate,
+} from "@/lib/dossard/storage";
 import type { BibTemplate, RaceEvent } from "@/lib/dossard/types";
 import { useDossardWebMcp } from "@/lib/dossard/webmcp";
 import { publicAsset } from "@/lib/dossard/assets";
 
-export default function Home(){
- const [events,setEvents]=useState<RaceEvent[]>([]),[templates,setTemplates]=useState<BibTemplate[]>([]),[active,setActive]=useState<RaceEvent>(),[loading,setLoading]=useState(true),[stationCode,setStationCode]=useState(""),[saveStatus,setSaveStatus]=useState<"saved"|"saving"|"error">("saved");
- const activeRef=useRef<RaceEvent|undefined>(undefined),restoreInputRef=useRef<HTMLInputElement>(null);
- useEffect(()=>{window.scrollTo({top:0,behavior:"auto"})},[active?.id]);
- useEffect(()=>{const params=new URLSearchParams(window.location.search);Promise.resolve().then(()=>setStationCode((params.get("station")??"").trim().toUpperCase()));Promise.all([listEvents(),listTemplates()]).then(([e,t])=>{setEvents(e);setTemplates(t)}).catch(()=>toast.error("Le stockage local n’a pas pu être ouvert.")).finally(()=>setLoading(false))},[]);
- useEffect(()=>{activeRef.current=active;if(!active)return;const timer=setTimeout(()=>{saveEvent(active).then(saved=>{setEvents(items=>[saved,...items.filter(e=>e.id!==saved.id)]);setSaveStatus("saved")}).catch(()=>setSaveStatus("error"))},550);return()=>clearTimeout(timer)},[active]);
- const openEvent=(event:RaceEvent)=>{activeRef.current=event;setSaveStatus("saved");setActive(event)};
- const changeActive=(event:RaceEvent)=>{activeRef.current=event;setSaveStatus("saving");setActive(event)};
- const createAndOpen=async(event:RaceEvent)=>{const saved=await saveEvent(event);setEvents(items=>[saved,...items]);openEvent(saved)};
- useDossardWebMcp(events,createAndOpen,openEvent);
- const saveTemplateAndRefresh=async(template:BibTemplate)=>{const saved=await saveTemplate(template);setTemplates(items=>[saved,...items.filter(i=>i.id!==saved.id)])};
- const joinCourse=(code:string)=>{const clean=code.trim().toUpperCase();if(!clean)return;const url=new URL(window.location.href);url.searchParams.set("station",clean);window.history.replaceState({},"",url.toString());setStationCode(clean)};
- const backup=()=>{if(!confirm("La sauvegarde contient les noms des élèves, les modèles et la clé organisateur. Conservez ce fichier dans un emplacement sécurisé. Continuer ?"))return;downloadCrossBackup(events,templates);toast.success("Sauvegarde complète téléchargée.")};
- const restore=async(file?:File)=>{if(!file)return;try{const result=await restoreCrossBackup(file);const [loadedEvents,loadedTemplates]=await Promise.all([listEvents(),listTemplates()]);setEvents(loadedEvents);setTemplates(loadedTemplates);toast.success(`${result.events} cross et ${result.templates} modèle(s) restaurés. L’accès organisateur a aussi été récupéré.`)}catch(error){toast.error(error instanceof Error?error.message:"Restauration impossible.")}finally{if(restoreInputRef.current)restoreInputRef.current.value=""}};
- if(stationCode)return <><RaceStation stationCode={stationCode} onLeave={()=>{const url=new URL(window.location.href);url.searchParams.delete("station");window.history.replaceState({},"",url.toString());setStationCode("")}}/><Toaster position="bottom-right" richColors closeButton/></>;
- if(loading)return <main className="grid min-h-screen place-items-center text-center"><div><span className="mx-auto grid size-16 place-items-center rounded-[1.4rem] bg-primary text-white shadow-xl"><Loader2 className="animate-spin"/></span><p className="mt-4 font-bold text-[#173970]">Préparation de Gestion Cross…</p></div></main>;
- return <div className="min-h-screen text-[#102347]">
-  {!active&&<header className="border-b border-border bg-white"><div className="cross-shell flex min-h-20 flex-wrap items-center gap-3 py-3 sm:gap-4"><Image src={publicAsset("/logo-bon-sauveur-cross.png")} alt="Gestion Cross" width={64} height={64} priority className="size-14 shrink-0 rounded-xl bg-white object-contain"/><div className="min-w-0 flex-1"><p className="text-xl font-bold leading-tight tracking-tight text-primary">Gestion Cross</p><p className="mt-1 text-sm text-muted-foreground">L’organisation du cross, simplement.</p></div><div className="flex flex-wrap items-center gap-2"><input ref={restoreInputRef} type="file" accept="application/json,.json" className="hidden" onChange={event=>void restore(event.target.files?.[0])}/><Button size="sm" variant="outline" onClick={backup} disabled={!events.length&&!templates.length}><Download/>Sauvegarder</Button><Button size="sm" variant="outline" onClick={()=>restoreInputRef.current?.click()}><Upload/>Restaurer</Button><span className="hidden items-center gap-2 rounded-full border border-border px-3 py-2 text-xs font-medium text-muted-foreground xl:inline-flex"><Flag className="size-4 text-primary"/>Créé par L. RIGAUX</span></div></div></header>}
-  {active?<EventWorkspace event={active} templates={templates} saveStatus={saveStatus} onChange={changeActive} onSaveTemplate={saveTemplateAndRefresh} onBack={async()=>{const current=activeRef.current;if(current){const saved=await saveEvent(current);setEvents(items=>[saved,...items.filter(e=>e.id!==saved.id)])}activeRef.current=undefined;setActive(undefined);setSaveStatus("saved")}}/>:<Dashboard events={events} templates={templates} onCreate={createAndOpen} onOpen={openEvent} onJoinCourse={joinCourse} onDelete={async event=>{await deleteEvent(event.id);setEvents(items=>items.filter(i=>i.id!==event.id));toast.success("Cross supprimé.")}}/>}
-  <Toaster position="bottom-right" richColors closeButton/>
- </div>;
+export default function Home() {
+  const [events, setEvents] = useState<RaceEvent[]>([]),
+    [templates, setTemplates] = useState<BibTemplate[]>([]),
+    [active, setActive] = useState<RaceEvent>(),
+    [loading, setLoading] = useState(true),
+    [stationCode, setStationCode] = useState(""),
+    [backupBusy, setBackupBusy] = useState(false),
+    [saveStatus, setSaveStatus] = useState<"saved" | "saving" | "error">(
+      "saved",
+    );
+  const activeRef = useRef<RaceEvent | undefined>(undefined),
+    restoreInputRef = useRef<HTMLInputElement>(null);
+  useEffect(() => {
+    window.scrollTo({ top: 0, behavior: "auto" });
+  }, [active?.id]);
+  useEffect(() => {
+    const params = new URLSearchParams(window.location.search);
+    Promise.resolve().then(() =>
+      setStationCode((params.get("station") ?? "").trim().toUpperCase()),
+    );
+    Promise.all([listEvents(), listTemplates()])
+      .then(([e, t]) => {
+        setEvents(e);
+        setTemplates(t);
+      })
+      .catch(() => toast.error("Le stockage local n’a pas pu être ouvert."))
+      .finally(() => setLoading(false));
+  }, []);
+  useEffect(() => {
+    activeRef.current = active;
+    if (!active) return;
+    const timer = setTimeout(() => {
+      saveEvent(active)
+        .then((saved) => {
+          setEvents((items) => [
+            saved,
+            ...items.filter((e) => e.id !== saved.id),
+          ]);
+          if (activeRef.current === active) setSaveStatus("saved");
+        })
+        .catch(() => {
+          if (activeRef.current === active) setSaveStatus("error");
+        });
+    }, 550);
+    return () => clearTimeout(timer);
+  }, [active]);
+  useEffect(() => {
+    const guard = (event: BeforeUnloadEvent) => {
+      if (saveStatus !== "saved" && activeRef.current) {
+        event.preventDefault();
+        event.returnValue = "";
+      }
+    };
+    const flush = () => {
+      if (
+        document.visibilityState === "hidden" &&
+        activeRef.current &&
+        saveStatus !== "saved"
+      )
+        void saveEvent(activeRef.current).catch(() => undefined);
+    };
+    window.addEventListener("beforeunload", guard);
+    document.addEventListener("visibilitychange", flush);
+    return () => {
+      window.removeEventListener("beforeunload", guard);
+      document.removeEventListener("visibilitychange", flush);
+    };
+  }, [saveStatus]);
+  const openEvent = (event: RaceEvent) => {
+    activeRef.current = event;
+    setSaveStatus("saved");
+    setActive(event);
+  };
+  const changeActive = (event: RaceEvent) => {
+    activeRef.current = event;
+    setSaveStatus("saving");
+    setActive(event);
+  };
+  const createAndOpen = async (event: RaceEvent) => {
+    const saved = await saveEvent(event);
+    setEvents((items) => [saved, ...items]);
+    openEvent(saved);
+  };
+  useDossardWebMcp(events, createAndOpen, openEvent);
+  const saveTemplateAndRefresh = async (template: BibTemplate) => {
+    const saved = await saveTemplate(template);
+    setTemplates((items) => [saved, ...items.filter((i) => i.id !== saved.id)]);
+  };
+  const joinCourse = (code: string) => {
+    const clean = code.trim().toUpperCase();
+    if (!clean) return;
+    const url = new URL(window.location.href);
+    url.searchParams.set("station", clean);
+    window.history.replaceState({}, "", url.toString());
+    setStationCode(clean);
+  };
+  const backup = async () => {
+    if (
+      !confirm(
+        "La sauvegarde contient les noms des élèves, les modèles et la clé organisateur. Conservez ce fichier dans un emplacement sécurisé. Continuer ?",
+      )
+    )
+      return;
+    setBackupBusy(true);
+    try {
+      const result = await downloadCrossBackup(events, templates);
+      if (result) {
+        for (const event of result.events) await saveEvent(event);
+        setEvents(result.events);
+        toast.success(
+          result.complete
+            ? "Sauvegarde téléchargée, avec les courses et résultats archivés."
+            : "Sauvegarde locale téléchargée. Certains résultats serveur manquent.",
+        );
+      }
+    } catch {
+      toast.error(
+        "La sauvegarde n’a pas pu être finalisée. Vérifiez l’espace disponible.",
+      );
+    } finally {
+      setBackupBusy(false);
+    }
+  };
+  const restore = async (file?: File) => {
+    if (!file) return;
+    if (
+      !confirm(
+        "Restaurer cette sauvegarde ? Les cross et modèles ayant le même identifiant seront remplacés. Les archives de résultats resteront en lecture seule.",
+      )
+    )
+      return;
+    try {
+      const result = await restoreCrossBackup(file);
+      const [loadedEvents, loadedTemplates] = await Promise.all([
+        listEvents(),
+        listTemplates(),
+      ]);
+      setEvents(loadedEvents);
+      setTemplates(loadedTemplates);
+      toast.success(
+        `${result.events} cross et ${result.templates} modèle(s) restaurés. L’accès organisateur a aussi été récupéré.`,
+      );
+    } catch (error) {
+      toast.error(
+        error instanceof Error ? error.message : "Restauration impossible.",
+      );
+    } finally {
+      if (restoreInputRef.current) restoreInputRef.current.value = "";
+    }
+  };
+  if (stationCode)
+    return (
+      <>
+        <RaceStation
+          stationCode={stationCode}
+          onLeave={() => {
+            const url = new URL(window.location.href);
+            url.searchParams.delete("station");
+            window.history.replaceState({}, "", url.toString());
+            setStationCode("");
+          }}
+        />
+        <Toaster position="bottom-right" richColors closeButton />
+      </>
+    );
+  if (loading)
+    return (
+      <main className="grid min-h-screen place-items-center text-center">
+        <div>
+          <span className="mx-auto grid size-16 place-items-center rounded-[1.4rem] bg-primary text-white shadow-xl">
+            <Loader2 className="animate-spin" />
+          </span>
+          <p className="mt-4 font-bold text-[#173970]">
+            Préparation de Gestion Cross…
+          </p>
+        </div>
+      </main>
+    );
+  return (
+    <div className="min-h-screen text-[#102347]">
+      {!active && (
+        <header className="border-b border-border bg-white">
+          <div className="cross-shell flex min-h-20 flex-wrap items-center gap-3 py-3 sm:gap-4">
+            <Image
+              src={publicAsset("/logo-bon-sauveur-cross.png")}
+              alt="Gestion Cross"
+              width={64}
+              height={64}
+              priority
+              className="size-14 shrink-0 rounded-xl bg-white object-contain"
+            />
+            <div className="min-w-0 flex-1">
+              <p className="text-xl font-bold leading-tight tracking-tight text-primary">
+                Gestion Cross
+              </p>
+              <p className="mt-1 text-sm text-muted-foreground">
+                L’organisation du cross, simplement.
+              </p>
+            </div>
+            <div className="flex flex-wrap items-center gap-2">
+              <input
+                ref={restoreInputRef}
+                type="file"
+                accept="application/json,.json"
+                className="hidden"
+                onChange={(event) => void restore(event.target.files?.[0])}
+              />
+              <Button
+                size="sm"
+                variant="outline"
+                onClick={() => void backup()}
+                disabled={backupBusy || (!events.length && !templates.length)}
+              >
+                {backupBusy ? (
+                  <Loader2 className="animate-spin" />
+                ) : (
+                  <Download />
+                )}
+                {backupBusy ? "Sauvegarde…" : "Sauvegarder"}
+              </Button>
+              <Button
+                size="sm"
+                variant="outline"
+                disabled={backupBusy}
+                onClick={() => restoreInputRef.current?.click()}
+              >
+                <Upload />
+                Restaurer
+              </Button>
+              <span className="hidden items-center gap-2 rounded-full border border-border px-3 py-2 text-xs font-medium text-muted-foreground xl:inline-flex">
+                <Flag className="size-4 text-primary" />
+                Créé par L. RIGAUX
+              </span>
+            </div>
+          </div>
+        </header>
+      )}
+      {active ? (
+        <EventWorkspace
+          event={active}
+          templates={templates}
+          saveStatus={saveStatus}
+          onChange={changeActive}
+          onSaveTemplate={saveTemplateAndRefresh}
+          onBack={async () => {
+            try {
+              const current = activeRef.current;
+              if (current) {
+                const saved = await saveEvent(current);
+                setEvents((items) => [
+                  saved,
+                  ...items.filter((e) => e.id !== saved.id),
+                ]);
+                if (activeRef.current !== current) return;
+              }
+              activeRef.current = undefined;
+              setActive(undefined);
+              setSaveStatus("saved");
+            } catch {
+              setSaveStatus("error");
+              toast.error(
+                "Enregistrement impossible. Le cross reste ouvert pour préserver vos modifications.",
+              );
+            }
+          }}
+        />
+      ) : (
+        <Dashboard
+          events={events}
+          templates={templates}
+          onCreate={createAndOpen}
+          onOpen={openEvent}
+          onJoinCourse={joinCourse}
+          onDelete={async (event) => {
+            await deleteEvent(event.id);
+            setEvents((items) => items.filter((i) => i.id !== event.id));
+            toast.success("Cross supprimé.");
+          }}
+        />
+      )}
+      <Toaster position="bottom-right" richColors closeButton />
+    </div>
+  );
 }

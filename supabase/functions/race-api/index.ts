@@ -121,10 +121,6 @@ async function heatByCode(c: SupabaseClient, rawCode: string) {
   if (!data) fail("CODE_INVALIDE", 404);
   return data;
 }
-async function recompute(c: SupabaseClient, heatId: string) {
-  const { error } = await c.rpc("cross_recompute_segmented_positions", { p_heat_id: heatId });
-  if (error) throw error;
-}
 async function paged<T>(fetcher: (from: number, to: number) => Promise<Page<T>>) {
   const rows: T[] = [];
   for (let from = 0; ; from += PAGE_SIZE) {
@@ -334,40 +330,22 @@ async function setStatus(body: J) {
   const entryId = txt(body.entryId, 80);
   const status = txt(body.status, 20);
   if (!["registered", "dnf", "exempt", "absent"].includes(status)) fail("STATUT_INVALIDE");
-  const query = await c.from("cross_entries").select("id,status,heat_id").eq("id", entryId).maybeSingle();
-  if (query.error) throw query.error;
-  if (!query.data) fail("PARTICIPANT_INTROUVABLE", 404);
-  const heat = await ownedHeat(c, query.data.heat_id, owner);
-  if (query.data.status === "finished") fail("SUPPRIMER_ARRIVEE_DABORD");
-  if (heat.status === "finished" && status === "registered") fail("COURSE_TERMINEE_VERROUILLEE");
-  const update = await c.from("cross_entries").update({ status }).eq("id", entryId);
-  if (update.error) throw update.error;
-  return { ok: true };
+  const { data, error } = await c.rpc("cross_set_entry_status_internal", {
+    p_entry_id: entryId, p_owner_key_hash: owner, p_status: status,
+  });
+  if (error) throw error;
+  return data;
 }
 
 async function removeFinish(body: J) {
   const c = client();
   const owner = await ownerHash(body);
   const entryId = txt(body.entryId, 80);
-  const query = await c.from("cross_entries").select("id,heat_id,status").eq("id", entryId).maybeSingle();
-  if (query.error) throw query.error;
-  if (!query.data) fail("ARRIVEE_INTROUVABLE", 404);
-  const heat = await ownedHeat(c, query.data.heat_id, owner);
-  const nextStatus = heat.status === "finished" ? "dnf" : "registered";
-  const deleted = await c.from("cross_scans").delete().eq("entry_id", entryId);
-  if (deleted.error) throw deleted.error;
-  const update = await c.from("cross_entries").update({
-    status: nextStatus,
-    finish_position: null,
-    station_order: null,
-    station_position: null,
-    elapsed_ms: null,
-    scanned_at: null,
-    station_id: null,
-  }).eq("id", entryId);
-  if (update.error) throw update.error;
-  await recompute(c, query.data.heat_id);
-  return { removed: true, status: nextStatus };
+  const { data, error } = await c.rpc("cross_remove_finish_internal", {
+    p_entry_id: entryId, p_owner_key_hash: owner,
+  });
+  if (error) throw error;
+  return data;
 }
 
 async function reorder(body: J) {
@@ -388,26 +366,18 @@ async function deleteHeat(body: J) {
   const c = client();
   const owner = await ownerHash(body);
   const id = txt(body.heatId, 80);
-  const heat = await ownedHeat(c, id, owner);
-  if (heat.status === "running") fail("TERMINER_LA_COURSE_DABORD");
-  const query = await c.from("cross_heats").delete().eq("id", id);
-  if (query.error) throw query.error;
-  return { deleted: true };
+  const { data, error } = await c.rpc("cross_delete_heat_internal", {p_heat_id:id,p_owner_key_hash:owner});
+  if (error) throw error;
+  return data;
 }
 
 async function deleteEvent(body: J) {
   const c = client();
   const owner = await ownerHash(body);
   const localEventId = txt(body.localEventId, 120);
-  const event = await c.from("cross_events").select("id").eq("owner_key_hash", owner).eq("local_event_id", localEventId).maybeSingle();
-  if (event.error) throw event.error;
-  if (!event.data) return { deleted: false };
-  const running = await c.from("cross_heats").select("id").eq("event_id", event.data.id).eq("status", "running").limit(1);
-  if (running.error) throw running.error;
-  if ((running.data ?? []).length) fail("TERMINER_LA_COURSE_DABORD");
-  const deleted = await c.from("cross_events").delete().eq("id", event.data.id);
-  if (deleted.error) throw deleted.error;
-  return { deleted: true };
+  const { data, error } = await c.rpc("cross_delete_event_internal", {p_local_event_id:localEventId,p_owner_key_hash:owner});
+  if (error) throw error;
+  return data;
 }
 
 async function joinStation(body: J) {
@@ -437,22 +407,24 @@ async function stationState(body: J) {
     .eq("heat_id", heat.id)
     .order("station_order");
   if (stations.error) throw stations.error;
-  const statuses = await paged<{ status: string }>(async (from, to) => {
-    const result = await c.from("cross_entries").select("status").eq("heat_id", heat.id).order("id").range(from, to);
-    return { data: result.data as { status: string }[] | null, error: result.error };
+  const statuses = await paged<{ status: string; station_id: string | null }>(async (from, to) => {
+    const result = await c.from("cross_entries").select("status,station_id").eq("heat_id", heat.id).order("id").range(from, to);
+    return { data: result.data as { status: string; station_id: string | null }[] | null, error: result.error };
   });
   const recent = await c
     .from("cross_entries")
     .select("id,finish_position,station_order,station_position,elapsed_ms,scanned_at,station_id,participant:cross_participants(bib_code,first_name,last_name,class_name)")
     .eq("heat_id", heat.id)
     .eq("status", "finished")
+    .eq("station_id", stationId)
     .order("scanned_at", { ascending: false })
-    .limit(30);
+    .limit(12);
   if (recent.error) throw recent.error;
   return {
     heat,
     stations: stations.data ?? [],
     myStation: (stations.data ?? []).find((station) => station.client_station_id === stationId) ?? null,
+    myScanCount: statuses.filter((entry) => entry.status === "finished" && entry.station_id === stationId).length,
     counts: {
       total: statuses.length,
       finished: statuses.filter((entry) => entry.status === "finished").length,
@@ -476,7 +448,23 @@ async function scan(body: J) {
     p_bib_code: codeBib,
     p_station_id: stationId,
   });
-  if (error) throw error;
+  if (error) {
+    // Réponse perdue après validation : une relance sur le même poste confirme
+    // l'arrivée existante, sans ajouter de scan ni modifier son ordre.
+    if (String(error.message).includes("DOSSARD_DEJA_SCANNÉ")) {
+      const heat = await heatByCode(c, code);
+      const existing = await c.from("cross_entries")
+        .select("finish_position,station_order,station_position,elapsed_ms,participant:cross_participants!inner(bib_code,first_name,last_name,class_name)")
+        .eq("heat_id", heat.id).eq("status", "finished").eq("station_id", stationId)
+        .eq("participant.bib_code", codeBib).maybeSingle();
+      if (existing.error) throw existing.error;
+      if (existing.data) {
+        const person = Array.isArray(existing.data.participant) ? existing.data.participant[0] : existing.data.participant;
+        return { arrival: { ...existing.data, ...person, participant: undefined }, replay: true };
+      }
+    }
+    throw error;
+  }
   return { arrival: data?.[0] ?? null };
 }
 

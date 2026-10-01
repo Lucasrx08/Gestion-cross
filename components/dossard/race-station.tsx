@@ -1,69 +1,654 @@
 "use client";
 
-import { useEffect,useMemo,useRef,useState } from "react";
-import { ArrowLeft,CheckCircle2,Flag,Loader2,RotateCcw,ScanLine,Wifi,WifiOff } from "lucide-react";
+import { useEffect, useMemo, useRef, useState } from "react";
+import {
+  ArrowLeft,
+  CheckCircle2,
+  Flag,
+  Loader2,
+  RotateCcw,
+  ScanLine,
+  Wifi,
+  WifiOff,
+} from "lucide-react";
 import { toast } from "sonner";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
-import { formatElapsed,raceErrorMessage,stationApi,type StationState } from "@/lib/dossard/race-api";
+import {
+  formatElapsed,
+  isRetryableRaceError,
+  raceErrorMessage,
+  stationApi,
+  type StationState,
+} from "@/lib/dossard/race-api";
+import { ScanQueue } from "@/lib/dossard/scan-queue";
 import { normalizeScannedIdentifier } from "@/lib/dossard/identifiers";
 
-function getStationId(){const key="gestion-cross-station-id-v2";let value=window.localStorage.getItem(key);if(value)return value;value=`terminal-${crypto.randomUUID()}`;window.localStorage.setItem(key,value);return value}
-const letters=["A","B","C","D"];
-type Arrival={finish_position:number;station_order:number;station_position:number;bib_code:string;first_name:string;last_name:string;class_name:string;elapsed_ms:number};
+function getStationId() {
+  const key = "gestion-cross-station-id-v2";
+  let value = window.localStorage.getItem(key);
+  if (value) return value;
+  value = `terminal-${crypto.randomUUID()}`;
+  window.localStorage.setItem(key, value);
+  return value;
+}
+const letters = ["A", "B", "C", "D"];
+type Arrival = {
+  finish_position: number;
+  station_order: number;
+  station_position: number;
+  bib_code: string;
+  first_name: string;
+  last_name: string;
+  class_name: string;
+  elapsed_ms: number;
+};
 
-export function RaceStation({stationCode,onLeave}:{stationCode:string;onLeave:()=>void}){
- const inputRef=useRef<HTMLInputElement>(null);const queueRef=useRef<string[]>([]);const processingRef=useRef(false);
- const [scanError,setScanError]=useState("");const [state,setState]=useState<StationState>(),[code,setCode]=useState(""),[loading,setLoading]=useState(true),[scanning,setScanning]=useState(false),[connected,setConnected]=useState(true),[postId,setPostId]=useState(""),[queued,setQueued]=useState(0);
- const [lastArrival,setLastArrival]=useState<Arrival>();
- const my=state?.myStation;const myRecent=useMemo(()=>state?.recent.filter(r=>r.station_id===postId).sort((a,b)=>b.station_position-a.station_position).slice(0,12)??[],[state?.recent,postId]);
- const refresh=async(quiet=false,id=postId)=>{if(!id)return;try{const next=await stationApi<StationState>("station_state",{stationCode,stationId:id});setState(next);setConnected(true)}catch(error){const msg=raceErrorMessage(error);if(/Connexion au serveur/.test(msg))setConnected(false);if(!quiet)toast.error(msg)}finally{setLoading(false)}};
-
- const processQueue=async()=>{
-  if(processingRef.current||!my||!navigator.onLine||!connected)return;
-  processingRef.current=true;setScanning(true);
-  try{
-   while(queueRef.current.length&&navigator.onLine){
-    const bibCode=queueRef.current[0];
-    try{
-     const result=await stationApi<{arrival:Arrival|null}>("scan",{stationCode,bibCode,stationId:postId});
-     if(!result.arrival)throw new Error("ARRIVEE_NON_ENREGISTREE");
-     setLastArrival(result.arrival);setScanError("");
-     toast.success(`${letters[result.arrival.station_order-1]}${result.arrival.station_position} · ${result.arrival.first_name} ${result.arrival.last_name}`);
-    }catch(error){
-     const message=raceErrorMessage(error);setScanError(`Dossard ${bibCode} : ${message}`);toast.error(`Dossard ${bibCode} · ${message}`);
-     if(/Connexion au serveur/.test(message)){setConnected(false);break}
+export function RaceStation({
+  stationCode,
+  onLeave,
+}: {
+  stationCode: string;
+  onLeave: () => void;
+}) {
+  const inputRef = useRef<HTMLInputElement>(null);
+  const queueRef = useRef<ScanQueue | null>(null);
+  const processingRef = useRef(false);
+  const refreshBusy = useRef(false);
+  const mounted = useRef(true);
+  const [rejected, setRejected] = useState<string[]>([]);
+  const [fatal, setFatal] = useState("");
+  const [queueError, setQueueError] = useState("");
+  const [pendingCodes, setPendingCodes] = useState<string[]>([]);
+  const [scanError, setScanError] = useState("");
+  const [state, setState] = useState<StationState>(),
+    [code, setCode] = useState(""),
+    [loading, setLoading] = useState(true),
+    [scanning, setScanning] = useState(false),
+    [connected, setConnected] = useState(true),
+    [postId, setPostId] = useState(""),
+    [queued, setQueued] = useState(0);
+  const [lastArrival, setLastArrival] = useState<Arrival>();
+  const my = state?.myStation;
+  const myRecent = useMemo(
+    () =>
+      state?.recent
+        .filter((r) => r.station_id === postId)
+        .sort((a, b) => b.station_position - a.station_position)
+        .slice(0, 12) ?? [],
+    [state?.recent, postId],
+  );
+  const refresh = async (quiet = false, id = postId) => {
+    if (!id || refreshBusy.current) return;
+    refreshBusy.current = true;
+    try {
+      const next = await stationApi<StationState>("station_state", {
+        stationCode,
+        stationId: id,
+      });
+      if (!mounted.current) return;
+      setState(next);
+      setConnected(true);
+      setFatal("");
+    } catch (error) {
+      if (!mounted.current) return;
+      const msg = raceErrorMessage(error);
+      if (isRetryableRaceError(error)) setConnected(false);
+      if (!quiet) {
+        setFatal(msg);
+        toast.error(msg);
+      }
+    } finally {
+      refreshBusy.current = false;
+      if (mounted.current) setLoading(false);
     }
-    queueRef.current.shift();setQueued(queueRef.current.length);
-   }
-   await refresh(true);
-  }finally{
-   processingRef.current=false;setScanning(false);setQueued(queueRef.current.length);window.setTimeout(()=>inputRef.current?.focus(),25);
-  }
- };
- const enqueue=()=>{
-  const bibCode=normalizeScannedIdentifier(code);if(!bibCode||!my)return;
-  if(!navigator.onLine||!connected){toast.error("Connexion indisponible : le scan n’est pas ajouté pour éviter un classement incohérent.");return}
-  setCode("");setScanError("");queueRef.current.push(bibCode);setQueued(queueRef.current.length);window.setTimeout(()=>inputRef.current?.focus(),0);void processQueue();
- };
+  };
 
- useEffect(()=>{const id=getStationId();let cancelled=false;void Promise.resolve().then(()=>{if(!cancelled){setPostId(id);void refresh(false,id)}});const timer=window.setInterval(()=>void refresh(true,id),1800);return()=>{cancelled=true;window.clearInterval(timer)}},[stationCode]); // eslint-disable-line react-hooks/exhaustive-deps
- useEffect(()=>{const online=()=>{setConnected(true);void refresh(true)},offline=()=>setConnected(false);window.addEventListener("online",online);window.addEventListener("offline",offline);return()=>{window.removeEventListener("online",online);window.removeEventListener("offline",offline)}},[postId]); // eslint-disable-line react-hooks/exhaustive-deps
- useEffect(()=>{if(my?.id&&state?.heat.status==="running")window.setTimeout(()=>inputRef.current?.focus(),50)},[my?.id,state?.heat.status]);
- const join=async(mode:"start"|"continue")=>{try{await stationApi("join_station",{stationCode,stationId:postId,mode});await refresh(true);toast.success(mode==="start"?"Poste Début de la course activé.":"Poste Suite de la course activé.")}catch(error){toast.error(raceErrorMessage(error))}};
- const undo=async()=>{if(scanning||queued)return toast.error("Attendez la fin de la file de scans avant d’annuler.");if(!confirm("Annuler le dernier scan de ce poste ?"))return;try{await stationApi("undo_last_scan",{stationCode,stationId:postId});setLastArrival(undefined);await refresh(true);toast.success("Dernier scan annulé.")}catch(error){toast.error(raceErrorMessage(error))}};
- if(loading)return <main className="grid min-h-screen place-items-center bg-slate-50"><Loader2 className="size-10 animate-spin text-[#1154b3]"/></main>;
- return <main className="min-h-screen bg-[#f5f8fc] text-[#102347]">
-  <header className="race-band text-white shadow-lg"><div className="mx-auto flex min-h-20 max-w-5xl items-center gap-3 px-4"><Button size="icon-sm" variant="ghost" aria-label="Quitter le poste d’arrivée" className="shrink-0 text-white hover:bg-white/15 hover:text-white" onClick={onLeave}><ArrowLeft/></Button><span className="grid size-12 place-items-center rounded-xl bg-white/10"><Flag className="text-[#fed60b]"/></span><div className="min-w-0 flex-1"><p className="truncate text-lg font-bold">{state?.heat.event?.name||"Gestion Cross"}</p><p className="truncate text-sm text-blue-100">{state?.heat.name}{my?` · Poste ${my.station_order}`:""}</p></div><Badge className={`border-white/20 text-white ${connected?"bg-white/10":"bg-red-600"}`}>{connected?<Wifi className="text-emerald-300"/>:<WifiOff/>}{connected?"Connecté":"Hors connexion"}</Badge></div></header>
-  <div className="mx-auto max-w-5xl space-y-5 px-4 py-6 sm:px-6">
-   {!connected&&<div className="rounded-2xl border border-red-200 bg-red-50 p-4 font-bold text-red-800">Connexion perdue. Aucun nouveau scan n’est accepté tant que le réseau n’est pas revenu.</div>}
-   {!my&&state?.heat.status==="running"?<section className="cross-panel p-5 text-center sm:p-8"><p className="text-xs font-bold uppercase tracking-widest text-[#1154b3]">Configuration du poste</p><h1 className="mt-2 text-3xl font-bold">Quelle partie de la course scannez-vous ?</h1><p className="mx-auto mt-3 max-w-2xl text-slate-500">Aucun rang de départ à calculer. Les postes sont fusionnés automatiquement dans leur ordre.</p><div className="mx-auto mt-7 grid max-w-2xl gap-4 sm:grid-cols-2"><Button className="h-24 text-lg font-bold" onClick={()=>void join("start")}><Flag/>Début de la course</Button><Button variant="outline" className="h-24 text-lg font-bold" onClick={()=>void join("continue")}><ScanLine/>Suite de la course</Button></div><p className="mt-5 text-sm text-slate-500">Jusqu’à 4 postes / douchettes peuvent scanner simultanément.</p></section>:<>
-    <section className="grid gap-3 grid-cols-2 lg:grid-cols-4"><div className="cross-panel p-4"><p className="text-xs text-slate-500">Votre poste</p><p className="mt-1 text-3xl font-bold">{my?`${letters[my.station_order-1]} · ${my.station_order}`:"—"}</p></div><div className="cross-panel p-4"><p className="text-xs text-slate-500">Scans sur ce poste</p><p className="mt-1 text-3xl font-bold">{myRecent.length?Math.max(...myRecent.map(r=>r.station_position)):0}</p></div><div className="cross-panel p-4"><p className="text-xs text-slate-500">Arrivés au total</p><p className="mt-1 text-3xl font-bold">{state?.counts.finished??0}</p></div><div className="cross-panel p-4"><p className="text-xs text-slate-500">Postes connectés</p><p className="mt-1 text-3xl font-bold">{state?.stations.length??0}/4</p></div></section>
-    <section className="cross-panel p-5 text-center sm:p-8">{state?.heat.status==="running"?<><span className="mx-auto grid size-16 place-items-center rounded-2xl bg-[#fff3a9] text-[#1154b3]"><ScanLine className="size-8"/></span><h1 className="mt-4 text-2xl font-bold">Scanner avec le Poste {my?.station_order}</h1><p className="mt-1 text-sm text-slate-500">Les lectures rapprochées sont mises en file puis envoyées dans l’ordre. Vous pouvez scanner le dossard suivant sans attendre le rafraîchissement de l’écran.</p><div className="mx-auto mt-5 max-w-xl"><Input ref={inputRef} value={code} onChange={event=>{setCode(event.target.value);setScanError("")}} onKeyDown={event=>{if(event.key==="Enter"){event.preventDefault();enqueue()}}} aria-label="Numéro de dossard" aria-invalid={Boolean(scanError)} aria-describedby="bib-help" placeholder="N° de dossard ou code scanné" inputMode="numeric" className="h-18 text-center font-mono text-3xl font-bold tracking-wide" autoComplete="off" disabled={!connected}/><p id="bib-help" className="mt-2 text-xs text-slate-500">Douchette : chaque Entrée ajoute immédiatement la lecture à la file locale. Saisie manuelle : tapez le numéro puis validez.</p>{scanError&&<p role="alert" className="mt-3 rounded-xl bg-red-50 p-3 text-sm font-bold text-red-700">{scanError}</p>}<div className="mt-3 flex flex-wrap gap-2"><Button className="h-12 flex-1" onClick={enqueue} disabled={!code.trim()||!connected}><ScanLine/>Ajouter le scan{queued?` · ${queued} en attente`:""}</Button><Button variant="outline" className="h-12" onClick={()=>void undo()} disabled={!myRecent.length||scanning||queued>0}><RotateCcw/>Annuler le dernier</Button></div>{(scanning||queued>0)&&<div className="mt-3 flex items-center justify-center gap-2 rounded-xl bg-blue-50 p-3 text-sm font-bold text-[#1154b3]"><Loader2 className="size-4 animate-spin"/>Traitement de la file · {queued} restant{queued>1?"s":""}</div>}</div></>:<><CheckCircle2 className="mx-auto size-16 text-emerald-500"/><h1 className="mt-3 text-2xl font-bold">Course terminée</h1><p className="mt-2 text-sm text-slate-500">Ce poste est maintenant en lecture seule.</p></>}</section>
-    {lastArrival&&<section className="rounded-[1.5rem] border-2 border-emerald-200 bg-emerald-50 p-5"><p className="text-xs font-bold uppercase tracking-widest text-emerald-700">Dernier scan confirmé</p><div className="mt-2 flex flex-col gap-4 sm:flex-row sm:items-end sm:justify-between"><div><p className="text-4xl font-bold text-emerald-800">{letters[lastArrival.station_order-1]}{lastArrival.station_position}</p><p className="text-xl font-bold">{lastArrival.first_name} {lastArrival.last_name.toUpperCase()}</p><p className="text-sm text-slate-600">Dossard {lastArrival.bib_code} · {lastArrival.class_name}</p></div><div className="text-right"><p className="text-xs text-slate-500">Rang fusionné provisoire</p><p className="text-2xl font-bold">#{lastArrival.finish_position}</p><p className="font-mono text-sm">{formatElapsed(lastArrival.elapsed_ms)}</p></div></div></section>}
-    <section className="overflow-hidden rounded-[1.5rem] border bg-white"><div className="border-b p-4"><h2 className="font-bold">Historique de votre poste</h2><p className="text-xs text-slate-500">La référence A/B/C/D reste fixe même si le rang fusionné évolue.</p></div><div className="divide-y">{!myRecent.length&&<p className="p-6 text-center text-sm text-slate-500">Aucun scan sur ce poste.</p>}{myRecent.map(recent=><div key={recent.id} className="flex items-center gap-4 p-4"><span className="grid size-11 shrink-0 place-items-center rounded-xl bg-blue-50 font-bold text-[#1154b3]">{letters[recent.station_order-1]}{recent.station_position}</span><div className="min-w-0 flex-1"><p className="truncate font-bold">{recent.participant.first_name} {recent.participant.last_name.toUpperCase()}</p><p className="text-xs text-slate-500">Dossard {recent.participant.bib_code} · {recent.participant.class_name}</p></div><span className="text-sm font-bold">#{recent.finish_position}</span></div>)}</div></section>
-   </>}
-  </div>
- </main>;
+  const processQueue = async () => {
+    if (
+      processingRef.current ||
+      !queueRef.current ||
+      Boolean(queueError) ||
+      !my ||
+      state?.heat.status !== "running" ||
+      !navigator.onLine ||
+      !connected
+    )
+      return;
+    processingRef.current = true;
+    setScanning(true);
+    let retryLater = false;
+    try {
+      while (queueRef.current.length && navigator.onLine && mounted.current) {
+        const bibCode = queueRef.current.first;
+        try {
+          const result = await stationApi<{ arrival: Arrival | null }>("scan", {
+            stationCode,
+            bibCode,
+            stationId: postId,
+          });
+          if (!result.arrival) throw new Error("ARRIVEE_NON_ENREGISTREE");
+          setLastArrival(result.arrival);
+          setScanError("");
+          toast.success(
+            `${letters[result.arrival.station_order - 1]}${result.arrival.station_position} · ${result.arrival.first_name} ${result.arrival.last_name}`,
+          );
+        } catch (error) {
+          const message = raceErrorMessage(error);
+          setScanError(`Dossard ${bibCode} : ${message}`);
+          toast.error(`Dossard ${bibCode} · ${message}`);
+          if (isRetryableRaceError(error)) {
+            setConnected(false);
+            retryLater = true;
+            break;
+          }
+          setRejected((items) =>
+            [`Dossard ${bibCode} : ${message}`, ...items].slice(0, 20),
+          );
+        }
+        queueRef.current.complete();
+        setQueued(queueRef.current.length);
+        setPendingCodes(queueRef.current.snapshot());
+      }
+      if (!retryLater) await refresh(true);
+    } catch (error) {
+      setQueueError(
+        error instanceof Error ? error.message : "File locale indisponible.",
+      );
+      setConnected(false);
+    } finally {
+      processingRef.current = false;
+      if (mounted.current) {
+        setScanning(false);
+        setQueued(queueRef.current?.length ?? 0);
+        setPendingCodes(queueRef.current?.snapshot() ?? []);
+        window.setTimeout(() => inputRef.current?.focus(), 25);
+      }
+    }
+  };
+  const enqueue = () => {
+    const bibCode = normalizeScannedIdentifier(code);
+    if (!bibCode || !my) return;
+    if (!navigator.onLine || !connected) {
+      toast.error(
+        "Connexion indisponible : le scan n’est pas ajouté pour éviter un classement incohérent.",
+      );
+      return;
+    }
+    try {
+      if (!queueRef.current) throw new Error("File locale indisponible.");
+      queueRef.current.add(bibCode);
+      setCode("");
+      setScanError("");
+      setQueued(queueRef.current.length);
+      setPendingCodes(queueRef.current.snapshot());
+      window.setTimeout(() => inputRef.current?.focus(), 0);
+      void processQueue();
+    } catch (error) {
+      toast.error(
+        error instanceof Error
+          ? error.message
+          : "Enregistrement local impossible. Gardez le dossard pour le ressaisir.",
+      );
+    }
+  };
+
+  useEffect(() => {
+    mounted.current = true;
+    let id = "";
+    let cancelled = false;
+    void Promise.resolve().then(() => {
+      if (!cancelled) {
+        try {
+          id = getStationId();
+          setPostId(id);
+          queueRef.current = new ScanQueue(
+            window.localStorage,
+            `gestion-cross-pending:${stationCode}:${id}`,
+          );
+          setQueued(queueRef.current.length);
+          setPendingCodes(queueRef.current.snapshot());
+        } catch (error) {
+          setQueueError(String(error));
+          setLoading(false);
+          return;
+        }
+        void refresh(false, id);
+      }
+    });
+    const timer = window.setInterval(() => {
+      if (id && queueRef.current) void refresh(true, id);
+    }, 1800);
+    return () => {
+      cancelled = true;
+      mounted.current = false;
+      window.clearInterval(timer);
+    };
+  }, [stationCode]); // eslint-disable-line react-hooks/exhaustive-deps
+  useEffect(() => {
+    if (connected && my?.id && queued && !scanning) void processQueue();
+  }, [connected, my?.id, queued, scanning]); // eslint-disable-line react-hooks/exhaustive-deps
+  useEffect(() => {
+    const guard = (event: BeforeUnloadEvent) => {
+      if (queueRef.current?.length) {
+        event.preventDefault();
+        event.returnValue = "";
+      }
+    };
+    window.addEventListener("beforeunload", guard);
+    return () => window.removeEventListener("beforeunload", guard);
+  }, []);
+  useEffect(() => {
+    const online = () => {
+        setConnected(true);
+        void refresh(true);
+      },
+      offline = () => setConnected(false);
+    window.addEventListener("online", online);
+    window.addEventListener("offline", offline);
+    return () => {
+      window.removeEventListener("online", online);
+      window.removeEventListener("offline", offline);
+    };
+  }, [postId]); // eslint-disable-line react-hooks/exhaustive-deps
+  useEffect(() => {
+    if (my?.id && state?.heat.status === "running")
+      window.setTimeout(() => inputRef.current?.focus(), 50);
+  }, [my?.id, state?.heat.status]);
+  const join = async (mode: "start" | "continue") => {
+    try {
+      await stationApi("join_station", {
+        stationCode,
+        stationId: postId,
+        mode,
+      });
+      await refresh(true);
+      toast.success(
+        mode === "start"
+          ? "Poste Début de la course activé."
+          : "Poste Suite de la course activé.",
+      );
+    } catch (error) {
+      toast.error(raceErrorMessage(error));
+    }
+  };
+  const leave = () => {
+    if (scanning || queued)
+      return toast.error(
+        "Des scans restent en attente : laissez ce poste ouvert jusqu’à leur confirmation.",
+      );
+    onLeave();
+  };
+  const transmitPending = async () => {
+    try {
+      await navigator.clipboard.writeText(
+        (queueRef.current?.snapshot() ?? []).join("\n"),
+      );
+      toast.success(
+        "Dossards copiés. Transmettez-les à l’organisateur pour vérification.",
+      );
+    } catch {
+      toast.error("Copie indisponible : relevez les numéros affichés.");
+    }
+  };
+  const clearPending = () => {
+    if (
+      !confirm(
+        "Avez-vous transmis tous ces dossards à l’organisateur pour vérification ? Cette action vide uniquement la file locale, sans ajouter d’arrivée.",
+      )
+    )
+      return;
+    try {
+      queueRef.current?.clear();
+      setQueued(0);
+      setPendingCodes([]);
+    } catch (error) {
+      toast.error(String(error));
+    }
+  };
+  const undo = async () => {
+    if (scanning || queued)
+      return toast.error(
+        "Attendez la fin de la file de scans avant d’annuler.",
+      );
+    if (!confirm("Annuler le dernier scan de ce poste ?")) return;
+    try {
+      await stationApi("undo_last_scan", { stationCode, stationId: postId });
+      setLastArrival(undefined);
+      await refresh(true);
+      toast.success("Dernier scan annulé.");
+    } catch (error) {
+      toast.error(raceErrorMessage(error));
+    }
+  };
+  if (loading)
+    return (
+      <main className="grid min-h-screen place-items-center bg-slate-50">
+        <Loader2 className="size-10 animate-spin text-[#1154b3]" />
+      </main>
+    );
+  return (
+    <main className="min-h-screen bg-[#f5f8fc] text-[#102347]">
+      <header className="race-band text-white shadow-lg">
+        <div className="mx-auto flex min-h-20 max-w-5xl items-center gap-3 px-4">
+          <Button
+            size="icon-sm"
+            variant="ghost"
+            aria-label="Quitter le poste d’arrivée"
+            className="shrink-0 text-white hover:bg-white/15 hover:text-white"
+            onClick={leave}
+          >
+            <ArrowLeft />
+          </Button>
+          <span className="grid size-12 place-items-center rounded-xl bg-white/10">
+            <Flag className="text-[#fed60b]" />
+          </span>
+          <div className="min-w-0 flex-1">
+            <p className="truncate text-lg font-bold">
+              {state?.heat.event?.name || "Gestion Cross"}
+            </p>
+            <p className="truncate text-sm text-blue-100">
+              {state?.heat.name}
+              {my ? ` · Poste ${my.station_order}` : ""}
+            </p>
+          </div>
+          <Badge
+            className={`border-white/20 text-white ${connected ? "bg-white/10" : "bg-red-600"}`}
+          >
+            {connected ? <Wifi className="text-emerald-300" /> : <WifiOff />}
+            {connected ? "Connecté" : "Hors connexion"}
+          </Badge>
+        </div>
+      </header>
+      <div className="mx-auto max-w-5xl space-y-5 px-4 py-6 sm:px-6">
+        {(fatal || queueError) && (
+          <section role="alert" className="cross-panel border-red-200 p-6">
+            <h1 className="text-xl font-bold">
+              Le poste demande votre attention
+            </h1>
+            <p className="mt-2 text-red-700">{queueError || fatal}</p>
+            <Button
+              className="mt-4"
+              onClick={() =>
+                queueError ? window.location.reload() : void refresh(false)
+              }
+            >
+              Réessayer
+            </Button>
+          </section>
+        )}
+        {queued > 0 && state?.heat.status !== "running" && (
+          <section
+            role="alert"
+            className="rounded-2xl border border-amber-300 bg-amber-50 p-5"
+          >
+            <h2 className="font-bold">{queued} dossard(s) non confirmé(s)</h2>
+            <p className="mt-2 text-sm">
+              La course est close ou indisponible. Ces scans ne sont pas ajoutés
+              automatiquement. Transmettez-les à l’organisateur avant de
+              quitter.
+            </p>
+            <p className="my-3 break-words font-mono">
+              {pendingCodes.join(" · ")}
+            </p>
+            <div className="flex flex-wrap gap-2">
+              <Button onClick={() => void transmitPending()}>
+                Copier les dossards
+              </Button>
+              <Button variant="outline" onClick={clearPending}>
+                File transmise à l’organisateur
+              </Button>
+            </div>
+          </section>
+        )}
+        {!connected && (
+          <div className="rounded-2xl border border-red-200 bg-red-50 p-4 font-bold text-red-800">
+            Connexion perdue. Aucun nouveau scan n’est accepté tant que le
+            réseau n’est pas revenu.
+          </div>
+        )}
+        {!state || queueError ? null : !my &&
+          state?.heat.status === "running" ? (
+          <section className="cross-panel p-5 text-center sm:p-8">
+            <p className="text-xs font-bold uppercase tracking-widest text-[#1154b3]">
+              Configuration du poste
+            </p>
+            <h1 className="mt-2 text-3xl font-bold">
+              Quelle partie de la course scannez-vous ?
+            </h1>
+            <p className="mx-auto mt-3 max-w-2xl text-slate-500">
+              Aucun rang de départ à calculer. Les postes sont fusionnés
+              automatiquement dans leur ordre : A, puis B, puis C, puis D.
+              Chaque poste doit scanner un tronçon successif de la file
+              d’arrivée, et non des élèves répartis au hasard.
+            </p>
+            <div className="mx-auto mt-7 grid max-w-2xl gap-4 sm:grid-cols-2">
+              <Button
+                className="h-24 text-lg font-bold"
+                onClick={() => void join("start")}
+              >
+                <Flag />
+                Début de la course
+              </Button>
+              <Button
+                variant="outline"
+                className="h-24 text-lg font-bold"
+                onClick={() => void join("continue")}
+              >
+                <ScanLine />
+                Suite de la course
+              </Button>
+            </div>
+            <p className="mt-5 text-sm text-slate-500">
+              Jusqu’à 4 postes / douchettes peuvent scanner simultanément.
+            </p>
+          </section>
+        ) : (
+          <>
+            <section className="grid gap-3 grid-cols-2 lg:grid-cols-4">
+              <div className="cross-panel p-4">
+                <p className="text-xs text-slate-500">Votre poste</p>
+                <p className="mt-1 text-3xl font-bold">
+                  {my
+                    ? `${letters[my.station_order - 1]} · ${my.station_order}`
+                    : "—"}
+                </p>
+              </div>
+              <div className="cross-panel p-4">
+                <p className="text-xs text-slate-500">Scans sur ce poste</p>
+                <p className="mt-1 text-3xl font-bold">
+                  {state?.myScanCount ?? myRecent.length}
+                </p>
+              </div>
+              <div className="cross-panel p-4">
+                <p className="text-xs text-slate-500">Arrivés au total</p>
+                <p className="mt-1 text-3xl font-bold">
+                  {state?.counts.finished ?? 0}
+                </p>
+              </div>
+              <div className="cross-panel p-4">
+                <p className="text-xs text-slate-500">Postes connectés</p>
+                <p className="mt-1 text-3xl font-bold">
+                  {state?.stations.length ?? 0}/4
+                </p>
+              </div>
+            </section>
+            <section className="cross-panel p-5 text-center sm:p-8">
+              {state?.heat.status === "running" ? (
+                <>
+                  <span className="mx-auto grid size-16 place-items-center rounded-2xl bg-[#fff3a9] text-[#1154b3]">
+                    <ScanLine className="size-8" />
+                  </span>
+                  <h1 className="mt-4 text-2xl font-bold">
+                    Scanner avec le Poste {my?.station_order}
+                  </h1>
+                  <p className="mt-1 text-sm text-slate-500">
+                    Les lectures rapprochées sont mises en file puis envoyées
+                    dans l’ordre. Vous pouvez scanner le dossard suivant sans
+                    attendre le rafraîchissement de l’écran.
+                  </p>
+                  <div className="mx-auto mt-5 max-w-xl">
+                    <Input
+                      ref={inputRef}
+                      value={code}
+                      onChange={(event) => {
+                        setCode(event.target.value);
+                        setScanError("");
+                      }}
+                      onKeyDown={(event) => {
+                        if (event.key === "Enter") {
+                          event.preventDefault();
+                          enqueue();
+                        }
+                      }}
+                      aria-label="Numéro de dossard"
+                      aria-invalid={Boolean(scanError)}
+                      aria-describedby="bib-help"
+                      placeholder="N° de dossard ou code scanné"
+                      inputMode="numeric"
+                      className="h-18 text-center font-mono text-3xl font-bold tracking-wide"
+                      autoComplete="off"
+                      disabled={!connected}
+                    />
+                    <p id="bib-help" className="mt-2 text-xs text-slate-500">
+                      Douchette : chaque Entrée ajoute immédiatement la lecture
+                      à la file locale. Saisie manuelle : tapez le numéro puis
+                      validez.
+                    </p>
+                    {scanError && (
+                      <p
+                        role="alert"
+                        className="mt-3 rounded-xl bg-red-50 p-3 text-sm font-bold text-red-700"
+                      >
+                        {scanError}
+                      </p>
+                    )}
+                    <div className="mt-3 flex flex-wrap gap-2">
+                      <Button
+                        className="h-12 flex-1"
+                        onClick={enqueue}
+                        disabled={!code.trim() || !connected}
+                      >
+                        <ScanLine />
+                        Ajouter le scan{queued ? ` · ${queued} en attente` : ""}
+                      </Button>
+                      <Button
+                        variant="outline"
+                        className="h-12"
+                        onClick={() => void undo()}
+                        disabled={!myRecent.length || scanning || queued > 0}
+                      >
+                        <RotateCcw />
+                        Annuler le dernier
+                      </Button>
+                    </div>
+                    {(scanning || queued > 0) && (
+                      <div className="mt-3 flex items-center justify-center gap-2 rounded-xl bg-blue-50 p-3 text-sm font-bold text-[#1154b3]">
+                        <Loader2 className="size-4 animate-spin" />
+                        Traitement de la file · {queued} restant
+                        {queued > 1 ? "s" : ""}
+                      </div>
+                    )}
+                  </div>
+                </>
+              ) : (
+                <>
+                  <CheckCircle2 className="mx-auto size-16 text-emerald-500" />
+                  <h1 className="mt-3 text-2xl font-bold">Course terminée</h1>
+                  <p className="mt-2 text-sm text-slate-500">
+                    Ce poste est maintenant en lecture seule.
+                  </p>
+                </>
+              )}
+            </section>
+            {lastArrival && (
+              <section className="rounded-[1.5rem] border-2 border-emerald-200 bg-emerald-50 p-5">
+                <p className="text-xs font-bold uppercase tracking-widest text-emerald-700">
+                  Dernier scan confirmé
+                </p>
+                <div className="mt-2 flex flex-col gap-4 sm:flex-row sm:items-end sm:justify-between">
+                  <div>
+                    <p className="text-4xl font-bold text-emerald-800">
+                      {letters[lastArrival.station_order - 1]}
+                      {lastArrival.station_position}
+                    </p>
+                    <p className="text-xl font-bold">
+                      {lastArrival.first_name}{" "}
+                      {lastArrival.last_name.toUpperCase()}
+                    </p>
+                    <p className="text-sm text-slate-600">
+                      Dossard {lastArrival.bib_code} · {lastArrival.class_name}
+                    </p>
+                  </div>
+                  <div className="text-right">
+                    <p className="text-xs text-slate-500">
+                      Rang fusionné provisoire
+                    </p>
+                    <p className="text-2xl font-bold">
+                      #{lastArrival.finish_position}
+                    </p>
+                    <p className="font-mono text-sm">
+                      {formatElapsed(lastArrival.elapsed_ms)}
+                    </p>
+                  </div>
+                </div>
+              </section>
+            )}
+            <section className="overflow-hidden rounded-[1.5rem] border bg-white">
+              <div className="border-b p-4">
+                <h2 className="font-bold">Historique de votre poste</h2>
+                <p className="text-xs text-slate-500">
+                  La référence A/B/C/D reste fixe même si le rang fusionné
+                  évolue.
+                </p>
+              </div>
+              <div className="divide-y">
+                {!myRecent.length && (
+                  <p className="p-6 text-center text-sm text-slate-500">
+                    Aucun scan sur ce poste.
+                  </p>
+                )}
+                {myRecent.map((recent) => (
+                  <div key={recent.id} className="flex items-center gap-4 p-4">
+                    <span className="grid size-11 shrink-0 place-items-center rounded-xl bg-blue-50 font-bold text-[#1154b3]">
+                      {letters[recent.station_order - 1]}
+                      {recent.station_position}
+                    </span>
+                    <div className="min-w-0 flex-1">
+                      <p className="truncate font-bold">
+                        {recent.participant.first_name}{" "}
+                        {recent.participant.last_name.toUpperCase()}
+                      </p>
+                      <p className="text-xs text-slate-500">
+                        Dossard {recent.participant.bib_code} ·{" "}
+                        {recent.participant.class_name}
+                      </p>
+                    </div>
+                    <span className="text-sm font-bold">
+                      #{recent.finish_position}
+                    </span>
+                  </div>
+                ))}
+              </div>
+            </section>
+          </>
+        )}
+        {rejected.length > 0 && (
+          <section className="cross-panel border-red-200 p-5">
+            <h2 className="font-bold text-red-700">Scans refusés à vérifier</h2>
+            <p className="mt-1 text-xs text-slate-500">
+              Les 20 derniers refus de cette session. Aucun de ces scans n’a
+              ajouté une arrivée.
+            </p>
+            <ul className="mt-3 space-y-2 text-sm">
+              {rejected.map((message, index) => (
+                <li key={`${index}-${message}`}>{message}</li>
+              ))}
+            </ul>
+          </section>
+        )}
+      </div>
+    </main>
+  );
 }

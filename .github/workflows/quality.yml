@@ -43,6 +43,9 @@ jobs:
       - name: Tester les imports, codes et PDF
         run: node --import tsx scripts/acceptance-tests.mts
 
+      - name: Tester les classements, sauvegardes et files persistantes
+        run: node --import tsx scripts/reliability-tests.mts
+
       - name: Compiler la version GitHub Pages
         run: pnpm run build:github
         env:
