@@ -18,7 +18,7 @@ export function classKey(value: string) {
 
 export function gradeCategory(value: string) {
   const key = classKey(value);
-  const match = key.match(/^(6EME|5EME|4EME|3EME|2NDE|1ERE|TERMINALE|TERM|CM1|CM2|CE1|CE2|CP)(?:\\s|$)/);
+  const match = key.match(/^(6EME|5EME|4EME|3EME|2NDE|1ERE|TERMINALE|TERM|CM1|CM2|CE1|CE2|CP)(?:\s|$)/);
   if (!match) return key || "Sans catégorie";
   const labels: Record<string, string> = {
     "6EME": "6e", "5EME": "5e", "4EME": "4e", "3EME": "3e",
