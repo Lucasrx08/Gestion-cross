@@ -3,6 +3,7 @@ import * as XLSX from "xlsx";
 import { createRaceEvent } from "../lib/dossard/defaults";
 import {
   gradeCategory,
+  individualCategory,
   individualGroups,
   rankWithinCategory,
 } from "../lib/dossard/challenge";
@@ -36,6 +37,13 @@ const variants: Array<[string, string]> = [
   ["5 E Pasteur", "5e"],
   ["Cinquième", "5e"],
   ["CE 1 A", "CE1"],
+  ["CP Garçons", "CP"],
+  ["CE2 B", "CE2"],
+  ["4ème Flessel", "4e"],
+  ["Troisième Gaudí", "3e"],
+  ["2nde A", "2nde"],
+  ["Première B", "1re"],
+  ["Terminale C", "Terminale"],
   ["CM1/CM2", "CM1 CM2"],
   ["Groupe bleu", "GROUPE BLEU"],
   ["", "Sans catégorie"],
@@ -82,18 +90,40 @@ const entries = [
 ];
 test("Arrivées mélangées : rangs 6e et CM1 indépendants, absent non classé", () => {
   const ranks = rankWithinCategory(entries);
-  assert.deepEqual(ranks.get("entry-6"), { category: "6e", rank: 2 });
-  assert.deepEqual(ranks.get("entry-5"), { category: "CM1", rank: 2 });
+  assert.deepEqual(ranks.get("entry-6"), { category: "6e · filles", rank: 2 });
+  assert.deepEqual(ranks.get("entry-5"), { category: "CM1 · filles", rank: 2 });
   assert.equal(ranks.has("entry-7"), false);
   assert.deepEqual(
     individualGroups(entries).map((g) => [g.category, g.entries.length]),
     [
-      ["CM1", 3],
-      ["CM2", 1],
-      ["6e", 2],
-      ["5e", 1],
+      ["CM1 · filles", 3],
+      ["CM2 · filles", 1],
+      ["6e · filles", 2],
+      ["5e · filles", 1],
     ],
   );
+});
+
+const mixedSexEntries = [
+  entry(101, "CP A", 1),
+  { ...entry(102, "CP B", 2), participant: { ...entry(102, "CP B", 2).participant, sex: "M" } },
+  entry(103, "CP B", 3),
+  { ...entry(104, "CP A", 4), participant: { ...entry(104, "CP A", 4).participant, sex: "Garçon" } },
+  { ...entry(105, "CP", 5), participant: { ...entry(105, "CP", 5).participant, sex: "" } },
+  entry(106, "CP A", null, "exempt"),
+];
+test("CP filles/garçons mélangés : rangs indépendants, classes A/B regroupées, sexe inconnu isolé", () => {
+  const ranks = rankWithinCategory(mixedSexEntries);
+  assert.equal(ranks.get("entry-103")?.rank, 2);
+  assert.deepEqual(ranks.get("entry-104"), { category: "CP · garçons", rank: 2 });
+  assert.deepEqual(ranks.get("entry-105"), { category: "CP · sexe non renseigné", rank: 1 });
+  assert.equal(ranks.has("entry-106"), false);
+  assert.deepEqual(individualGroups(mixedSexEntries).map(g => [g.category, g.entries.length]), [
+    ["CP · filles", 3], ["CP · garçons", 2], ["CP · sexe non renseigné", 1],
+  ]);
+  assert.equal(individualCategory("CP Garçons", "F"), "CP · filles", "Le sexe de l’élève fait foi, pas le nom de classe");
+  assert.equal(individualCategory("CE1 A", "féminin"), "CE1 · filles");
+  assert.equal(individualCategory("CE2 B", "boy"), "CE2 · garçons");
 });
 
 const map = new Map<string, string>();
@@ -244,7 +274,7 @@ test("Excel : arrivée commune + une feuille distincte par niveau, noms uniques 
   assert(workbook.SheetNames.every((name) => name.length <= 31));
   const cm1 =
     workbook.Sheets[
-      workbook.SheetNames.find((name) => name.startsWith("1 CM1 -"))!
+      workbook.SheetNames.find((name) => name.startsWith("1 CM1 · filles -"))!
     ];
   const rows = XLSX.utils.sheet_to_json<unknown[]>(cm1, {
     header: 1,
@@ -254,6 +284,15 @@ test("Excel : arrivée commune + une feuille distincte par niveau, noms uniques 
   assert.equal(rows[5][0], 2);
   assert.equal(rows[5][1], 5);
   assert.equal(rows[6][7], "Absent");
+});
+const mixedBook = await buildRaceWorkbook([{ heat, entries: mixedSexEntries }], "individual");
+test("Excel mixte : feuilles filles/garçons distinctes et rangs cohérents avec l’arrivée commune", () => {
+  assert.equal(mixedBook.SheetNames.length, 4);
+  const boysName = mixedBook.SheetNames.find(name => name.startsWith("1 CP · garçons -"))!;
+  const boys = XLSX.utils.sheet_to_json<unknown[]>(mixedBook.Sheets[boysName], { header: 1, blankrows: true });
+  assert.deepEqual(boys.slice(4).map(row => row.slice(0, 2)), [[1, 2], [2, 4]]);
+  const common = XLSX.utils.sheet_to_json<unknown[]>(mixedBook.Sheets[mixedBook.SheetNames[0]], { header: 1, blankrows: true });
+  assert.deepEqual(common[6].slice(0, 3), [4, 2, "CP · garçons"]);
 });
 const large = Array.from({ length: 1500 }, (_, index) =>
   entry(index + 1, index % 2 ? "CM1 A" : "CM2 B", index + 1),

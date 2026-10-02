@@ -1,7 +1,7 @@
 /** Tests d’intégration explicites sur des données fictives isolées. Jamais exécutés par la CI. */
 import assert from "node:assert/strict";
 import { randomBytes, randomUUID } from "node:crypto";
-import { gradeCategory, rankWithinCategory } from "../lib/dossard/challenge";
+import { individualGroups, rankWithinCategory } from "../lib/dossard/challenge";
 import { parseCrossBackup } from "../lib/dossard/backup-validation";
 import { createRaceEvent } from "../lib/dossard/defaults";
 import type {
@@ -192,16 +192,14 @@ try {
   );
   passed("Doublon sur un autre poste refusé");
   const ranks = rankWithinCategory(finished);
-  for (const grade of ["CM1", "CM2", "6e", "5e"]) {
-    const members = finished.filter(
-      (e) => gradeCategory(e.participant.class_name) === grade,
-    );
+  for (const group of individualGroups(finished)) {
+    const members = group.entries;
     assert.deepEqual(
       members.map((e) => ranks.get(e.id)?.rank),
       Array.from({ length: members.length }, (_, i) => i + 1),
     );
   }
-  passed("Rangs indépendants CM1 / CM2 / 6e / 5e dans la même course");
+  passed("Rangs indépendants par niveau et sexe dans la même course");
   await call("undo_last_scan", { stationCode, stationId: posts[0] }, false);
   await call(
     "scan",

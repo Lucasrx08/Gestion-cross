@@ -30,11 +30,10 @@ const categoryRanks = rankWithinCategory(mixedGradeFinish);
 assert.equal(gradeCategory("CM1 B"), "CM1");
 assert.equal(gradeCategory("CM1"), "CM1");
 assert.equal(gradeCategory("CM2 A"), "CM2");
-assert.deepEqual(categoryRanks.get("21"), { category: "6e", rank: 1 });
-assert.deepEqual(categoryRanks.get("23"), { category: "6e", rank: 2 });
-assert.deepEqual(categoryRanks.get("22"), { category: "CM1", rank: 1 });
-assert.deepEqual(categoryRanks.get("24"), { category: "CM1", rank: 2 });
-assert.deepEqual(categoryRanks.get("25"), { category: "CM2", rank: 1 });
-assert.deepEqual(categoryRanks.get("26"), { category: "5e", rank: 1 });
+assert.deepEqual(categoryRanks.get("21"), { category: "6e · filles", rank: 1 });
+assert.deepEqual(categoryRanks.get("23"), { category: "6e · filles", rank: 2 });
+assert.deepEqual(categoryRanks.get("22"), { category: "CM1 · filles", rank: 1 });
+assert.deepEqual(categoryRanks.get("24"), { category: "CM1 · filles", rank: 2 });
+assert.deepEqual(categoryRanks.get("25"), { category: "CM2 · filles", rank: 1 });
+assert.deepEqual(categoryRanks.get("26"), { category: "5e · filles", rank: 1 });
 console.log("✓ Challenge : tous les élèves, variantes de classe, abandon dernier + 10, absents/dispensés dernier + 1, aucune arrivée");
-

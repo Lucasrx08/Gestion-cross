@@ -62,6 +62,7 @@ import {
   challengeRule,
   classKey,
   gradeCategory,
+  individualCategory,
   gradeOrder,
   compareCategories,
   individualGroups,
@@ -683,12 +684,12 @@ export function CourseStep({
               `<tr><td>${group.ranks.get(entry.id)?.rank ?? "—"}</td><td>${entry.finish_position ?? "—"}</td><td>${entry.participant.bib_number}</td><td><b>${esc(entry.participant.last_name.toUpperCase())}</b> ${esc(entry.participant.first_name)}</td><td>${esc(entry.participant.class_name)}</td><td>${esc(entry.status === "finished" ? formatElapsed(entry.elapsed_ms) : { registered: "À courir", absent: "Absent", exempt: "Dispensé", dnf: "Abandon" }[entry.status])}</td></tr>`,
           )
           .join("");
-        return `<h2>Niveau ${esc(group.category)}</h2><p>${group.finished} arrivé(s) sur ${group.entries.length} élève(s)</p><table><thead><tr><th>Rang niveau</th><th>Arrivée commune</th><th>Dossard</th><th>Élève</th><th>Classe</th><th>Temps / statut</th></tr></thead><tbody>${rows}</tbody></table>`;
+        return `<h2>Catégorie ${esc(group.category)}</h2><p>${group.finished} arrivé(s) sur ${group.entries.length} élève(s)</p><table><thead><tr><th>Rang catégorie</th><th>Arrivée commune</th><th>Dossard</th><th>Élève</th><th>Classe</th><th>Temps / statut</th></tr></thead><tbody>${rows}</tbody></table>`;
       })
       .join("");
     printWindow(
       `${selectedHeat.name} - individuel`,
-      `${documentHeader()}<h2>${esc(selectedHeat.name)} · Classements par niveau</h2><p class="note">Le rang d’arrivée est commun à tous. Chaque niveau a son classement distinct ; les classes du même niveau sont regroupées.</p>${sections}`,
+      `${documentHeader()}<h2>${esc(selectedHeat.name)} · Classements par niveau et sexe</h2><p class="note">Le rang d’arrivée est commun à tous. Chaque niveau a un classement filles et un classement garçons ; les classes du même niveau et du même sexe sont regroupées.</p>${sections}`,
     );
   };
   const printClasses = () => {
@@ -739,7 +740,7 @@ export function CourseStep({
   const social = async (kind: "individual" | "classes", story = false) => {
     if (kind === "individual" && selectedGroups.length !== 1)
       return toast.error(
-        "Choisissez un niveau dans « Classements par niveau » avant de créer le visuel.",
+        "Choisissez une catégorie dans « Classements par niveau et sexe » avant de créer le visuel.",
       );
     if (!selectedHeat) return;
     const width = 1080,
@@ -1311,7 +1312,7 @@ export function CourseStep({
                     <thead className="bg-blue-50 text-left text-xs uppercase text-slate-500">
                       <tr>
                         <th className="p-3">Rang arrivée</th>
-                        <th className="p-3">Rang niveau</th>
+                        <th className="p-3">Rang catégorie</th>
                         <th className="p-3">Poste</th>
                         <th className="p-3">Dossard</th>
                         <th className="p-3">Élève</th>
@@ -1408,15 +1409,15 @@ export function CourseStep({
                     Classement individuel
                   </h4>
                   <p className="text-sm text-slate-500">
-                    Rang d’arrivée commun et classement séparé par niveau (6e,
-                    5e, CM1, CM2…), avec les classes A/B regroupées.
+                    Rang d’arrivée commun et classements filles/garçons par niveau (CP,
+                    CE1, collège, lycée…), avec les classes A/B regroupées.
                   </p>
                   <div className="mt-4 flex flex-wrap gap-2">
                     <Button disabled={entriesLoading} onClick={printIndividual}>
                       <Printer />
                       PDF ·{" "}
                       {visibleCategory === "all"
-                        ? "tous les niveaux"
+                        ? "toutes les catégories"
                         : visibleCategory}
                     </Button>
                     <Button
@@ -1583,7 +1584,7 @@ export function CourseStep({
                 </p>
                 <p className="mt-1 text-xs text-slate-500">
                   {chosenParticipants.length
-                    ? `Classements distincts : ${[...new Set(chosenParticipants.map((p) => gradeCategory(p.className)))].join(" · ")}.`
+                    ? `Classements distincts : ${[...new Set(chosenParticipants.map((p) => individualCategory(p.className, p.sex)))].join(" / ")}.`
                     : "Classes et sexe sélectionnés ci-dessous."}
                 </p>
               </div>

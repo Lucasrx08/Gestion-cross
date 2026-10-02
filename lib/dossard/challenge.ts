@@ -55,9 +55,19 @@ export const gradeOrder = [
   "1re",
   "Terminale",
 ];
+export function individualCategory(className: string, sex?: string) {
+  const normalized = classKey(sex ?? "");
+  const label = ["F", "FILLE", "FILLES", "FEMININ", "FEMALE", "GIRL"].includes(normalized)
+    ? "filles"
+    : ["M", "G", "GARCON", "GARCONS", "MASCULIN", "MALE", "BOY"].includes(normalized)
+      ? "garçons"
+      : "sexe non renseigné";
+  return `${gradeCategory(className)} · ${label}`;
+}
+
 export function compareCategories(a: string, b: string) {
-  const ai = gradeOrder.indexOf(a),
-    bi = gradeOrder.indexOf(b);
+  const ai = gradeOrder.indexOf(a.split(" · ")[0]),
+    bi = gradeOrder.indexOf(b.split(" · ")[0]);
   return (ai < 0 ? 99 : ai) - (bi < 0 ? 99 : bi) || a.localeCompare(b, "fr");
 }
 
@@ -65,7 +75,7 @@ export function individualGroups(entries: HeatEntry[]) {
   const ranks = rankWithinCategory(entries);
   const groups = new Map<string, HeatEntry[]>();
   entries.forEach((entry) => {
-    const category = gradeCategory(entry.participant.class_name);
+    const category = individualCategory(entry.participant.class_name, entry.participant.sex);
     groups.set(category, [...(groups.get(category) ?? []), entry]);
   });
   return [...groups]
@@ -99,7 +109,7 @@ export function rankWithinCategory(entries: HeatEntry[]) {
   const ranks = new Map<string, { category: string; rank: number }>();
   const counts = new Map<string, number>();
   ranked.forEach((entry) => {
-    const category = gradeCategory(entry.participant.class_name);
+    const category = individualCategory(entry.participant.class_name, entry.participant.sex);
     const rank = (counts.get(category) ?? 0) + 1;
     counts.set(category, rank);
     ranks.set(entry.id, { category, rank });

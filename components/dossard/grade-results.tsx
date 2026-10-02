@@ -37,23 +37,23 @@ export function GradeResults({
             <Medal />
           </span>
           <div>
-            <h3 className="text-xl font-bold">Classements par niveau</h3>
+            <h3 className="text-xl font-bold">Classements par niveau et sexe</h3>
             <p className="text-sm text-slate-500">
               {provisional ? "Provisoires · " : ""}Une arrivée commune, un
-              classement distinct pour chaque niveau.
+              classement distinct pour les filles et les garçons de chaque niveau.
             </p>
           </div>
         </div>
         <div
           className="mt-4 flex flex-wrap gap-2"
-          aria-label="Filtrer le classement par niveau"
+          aria-label="Filtrer le classement par niveau et sexe"
         >
           <Button
             size="sm"
             variant={category === "all" ? "default" : "outline"}
             onClick={() => onCategory("all")}
           >
-            Tous les niveaux
+            Toutes les catégories
           </Button>
           {groups.map((group) => (
             <Button
@@ -67,7 +67,9 @@ export function GradeResults({
           ))}
         </div>
         <p className="mt-3 text-xs text-slate-500">
-          CM1 A, CM1 B et CM1 sont regroupés ; les CM2 restent séparés. Pour une
+          Les filles de CM1 A, CM1 B et CM1 sont regroupées ; les garçons ont leur
+          propre classement. La colonne Sexe de la liste élèves détermine le groupe.
+          Un sexe manquant ou inconnu reste dans « sexe non renseigné ». Pour une
           classe à double niveau ou sans niveau explicite, vérifiez le libellé
           de chaque élève avant le départ.
         </p>
@@ -90,7 +92,7 @@ export function GradeResults({
             <table className="cross-table min-w-[640px]">
               <thead>
                 <tr className="text-left text-xs text-slate-500">
-                  <th className="p-3">Rang du niveau</th>
+                  <th className="p-3">Rang catégorie</th>
                   <th className="p-3">Élève</th>
                   <th className="p-3">Classe</th>
                   <th className="p-3">Dossard</th>

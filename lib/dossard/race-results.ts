@@ -4,7 +4,7 @@ import {
   challengePoints,
   challengeRule,
   classKey,
-  gradeCategory,
+  individualCategory,
   individualGroups,
   rankWithinCategory,
 } from "./challenge";
@@ -107,8 +107,8 @@ export async function buildRaceWorkbook(
     if (kind === "individual") {
       rows.push([
         "Rang d’arrivée",
-        "Rang du niveau",
-        "Niveau",
+        "Rang catégorie",
+        "Catégorie (niveau et sexe)",
         "Dossard",
         "Nom",
         "Prénom",
@@ -132,7 +132,7 @@ export async function buildRaceWorkbook(
           rows.push([
             entry.finish_position ?? "",
             category?.rank ?? "",
-            category?.category ?? gradeCategory(entry.participant.class_name),
+            category?.category ?? individualCategory(entry.participant.class_name, entry.participant.sex),
             entry.participant.bib_number,
             entry.participant.last_name,
             entry.participant.first_name,
@@ -201,13 +201,13 @@ export async function buildRaceWorkbook(
     if (kind === "individual") {
       for (const group of individualGroups(entries)) {
         const gradeRows: unknown[][] = [
-          [heat.name, `Niveau ${group.category}`],
+          [heat.name, `Catégorie ${group.category}`],
           [
-            "Les classes du même niveau sont regroupées ; le rang d’arrivée conserve l’ordre commun.",
+            "Les classes du même niveau et du même sexe sont regroupées ; le rang d’arrivée conserve l’ordre commun.",
           ],
           [],
           [
-            "Rang du niveau",
+            "Rang catégorie",
             "Rang d’arrivée",
             "Dossard",
             "Nom",
