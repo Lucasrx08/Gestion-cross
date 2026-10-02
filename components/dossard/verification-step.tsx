@@ -128,7 +128,7 @@ export function VerificationStep({
         </section>
       )}
 
-      <section className="grid gap-5 lg:grid-cols-[minmax(0,1fr)_minmax(320px,.75fr)]">
+      <section className="cross-editor-grid grid gap-4">
         <div className="cross-panel p-5">
           <div className="mb-5 flex items-start gap-3">
             <span className="grid size-10 shrink-0 place-items-center rounded-xl bg-[#0d397b] text-white"><ScanBarcode /></span>

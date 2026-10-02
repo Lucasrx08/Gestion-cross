@@ -79,8 +79,8 @@ export function TemplateStep({
         title="Fond des dossards"
         description="Utilisez le fond par défaut ou importez votre visuel au format A5 paysage."
       />
-      <section className="grid gap-5 xl:grid-cols-[minmax(0,1.35fr)_minmax(320px,.65fr)]">
-        <div className="cross-panel bg-[#f0f5ff] p-4 sm:p-7">
+      <section className="cross-editor-grid grid gap-4">
+        <div className="cross-editor-preview cross-panel bg-[#f0f5ff] p-4">
           <div className="mb-5 flex flex-wrap items-start justify-between gap-3">
             <div>
               <p className="text-xs font-bold uppercase tracking-wider text-[#1154b3]">

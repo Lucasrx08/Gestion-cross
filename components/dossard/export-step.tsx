@@ -111,7 +111,7 @@ export function ExportStep({ event, selectedIds, initialSingleId }: ExportStepPr
         </section>
       )}
 
-      <section className="grid gap-5 xl:grid-cols-[minmax(0,1fr)_360px]">
+      <section className="cross-editor-grid grid gap-4">
         <div className="cross-panel p-5">
           <p className="text-xs font-bold uppercase tracking-wider text-[#1154b3]">PDF A4 haute qualité</p>
           <h2 className="mb-5 text-xl font-black">Choisir les dossards</h2>

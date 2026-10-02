@@ -141,7 +141,7 @@ export function EventWorkspace({
         className="sticky top-0 z-40 border-b border-border border-t-4 bg-white shadow-sm"
         style={{ borderTopColor: primary }}
       >
-        <div className="cross-shell flex min-h-20 items-center gap-3 py-3 sm:gap-4">
+        <div className="cross-shell flex min-h-16 items-center gap-3 py-2 sm:gap-4">
           <Button
             size="icon-sm"
             variant="ghost"
@@ -157,10 +157,10 @@ export function EventWorkspace({
             width={60}
             height={60}
             unoptimized={Boolean(branding?.logoDataUrl)}
-            className="size-14 shrink-0 rounded-xl border border-border bg-white object-contain p-1"
+            className="size-11 shrink-0 rounded-xl border border-border bg-white object-contain p-1"
           />
           <div className="min-w-0 flex-1">
-            <p className="text-lg font-bold leading-snug tracking-tight sm:text-xl">
+            <p className="text-base font-bold leading-snug tracking-tight sm:text-lg">
               {event.name}
             </p>
             <p className="mt-1 text-xs text-muted-foreground sm:text-sm">
@@ -217,7 +217,7 @@ export function EventWorkspace({
         </div>
       </header>
 
-      <main className="cross-shell py-5 sm:py-7">
+      <main className="cross-shell py-3 sm:py-4">
         <div className="mb-4 flex flex-wrap items-center justify-between gap-3">
           <Button
             variant={step === "overview" ? "default" : "outline"}
@@ -342,7 +342,7 @@ export function EventWorkspace({
               ))}
             </div>
           </TabsContent>
-          <div className="cross-panel mb-5 p-1.5 sm:mb-7 sm:p-2">
+          <div className="cross-panel mb-4 p-1.5">
             <TabsList
               aria-label="Étapes du cross"
               className="cross-steps grid w-full bg-transparent"

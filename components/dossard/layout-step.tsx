@@ -15,6 +15,8 @@ import {
   Save,
   Trash2,
   Type,
+  ZoomIn,
+  ZoomOut,
 } from "lucide-react";
 import { toast } from "sonner";
 import {
@@ -80,6 +82,7 @@ export function LayoutStep({
   const [index, setIndex] = useState(0);
   const [grid, setGrid] = useState(true);
   const [snap, setSnap] = useState(true);
+  const [zoom, setZoom] = useState(1);
   const [deleteOpen, setDeleteOpen] = useState(false);
   const [saving, setSaving] = useState(false);
   const participants = event.participants,
@@ -177,8 +180,8 @@ export function LayoutStep({
           <Save /> Enregistrer une copie du modèle
         </Button>
       </section>
-      <section className="grid gap-4 xl:grid-cols-[minmax(0,1fr)_330px]">
-        <div className="cross-panel bg-[#f0f5ff] p-3 sm:p-6">
+      <section className="cross-editor-grid grid gap-4">
+        <div className="cross-editor-preview cross-panel bg-[#f0f5ff] p-3 sm:p-4">
           <div className="mb-4 flex flex-col gap-3 xl:flex-row xl:justify-between">
             <div>
               <p className="text-xs font-bold uppercase tracking-wider text-blue-700">
@@ -211,6 +214,12 @@ export function LayoutStep({
               </Button>
             </div>
           </div>
+          <div className="mb-3 flex flex-wrap items-center gap-2" aria-label="Zoom de l’aperçu">
+            <Button size="icon-sm" variant="outline" aria-label="Réduire l’aperçu" disabled={zoom <= 1} onClick={() => setZoom(z => Math.max(1, z - .25))}><ZoomOut /></Button>
+            <Button size="sm" variant="outline" onClick={() => setZoom(1)}>Vue entière</Button>
+            <span className="text-xs tabular-nums text-slate-500">{Math.round(zoom * 100)} %</span>
+            <Button size="icon-sm" variant="outline" aria-label="Agrandir l’aperçu" disabled={zoom >= 2} onClick={() => setZoom(z => Math.min(2, z + .25))}><ZoomIn /></Button>
+          </div>
           <BibCanvas
             event={event}
             participant={p}
@@ -219,6 +228,7 @@ export function LayoutStep({
             onChange={update}
             grid={grid}
             snap={snap}
+            zoom={zoom}
           />
           {participants.length > 0 && (
             <div className="mt-4 flex flex-wrap gap-2">
@@ -253,7 +263,7 @@ export function LayoutStep({
             </div>
           )}
         </div>
-        <aside className="cross-panel p-5">
+        <aside className="cross-editor-properties cross-panel p-4" aria-label="Propriétés du dossard">
           {selected ? (
             <div className="space-y-5">
               <div className="flex justify-between">
