@@ -20,6 +20,7 @@ import {
 } from "@/lib/dossard/exports";
 import type { ExportFilter, ExportMode, PdfProgress, RaceEvent } from "@/lib/dossard/types";
 import { isEventReady } from "@/lib/dossard/validation";
+import { rosterPrintDocument } from "@/lib/dossard/participant-roster";
 
 const options: Array<{ value: ExportMode; title: string; description: string }> = [
   { value: "all", title: "Tous les dossards", description: "PDF complet par numéro" },
@@ -98,9 +99,26 @@ export function ExportStep({ event, selectedIds, initialSingleId }: ExportStepPr
     }
   };
 
+  const printRoster = () => {
+    const popup = window.open("", "_blank");
+    if (!popup) return toast.error("Autorisez les fenêtres d’impression dans votre navigateur.");
+    popup.document.write(rosterPrintDocument(event.name, event.participants));
+    popup.document.close();
+    void popup.document.fonts.ready.then(() => {
+      if (!popup.closed) { popup.focus(); popup.print(); }
+    });
+  };
+
   return (
     <div className="space-y-6">
   <StepHeading icon={Printer} title="Imprimer les dossards" description="Choisissez les élèves à imprimer et téléchargez votre PDF prêt pour le format A4." />
+      <section className="cross-panel flex flex-wrap items-center gap-4 p-5">
+        <div className="min-w-0 flex-1">
+          <h2 className="font-bold">Liste de secours par classe</h2>
+          <p className="text-sm text-slate-500">Tous les élèves, classés par classe puis par nom : nom, prénom et dossard associé. À garder au poste de scan en cas de dossard perdu.</p>
+        </div>
+        <Button variant="outline" disabled={!event.participants.length} onClick={printRoster}><Printer />Imprimer la liste / PDF</Button>
+      </section>
       {!ready && (
         <section className="flex gap-3 rounded-2xl border border-red-200 bg-red-50 p-4 text-red-800">
           <ShieldAlert />

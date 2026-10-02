@@ -3,7 +3,7 @@
 import { Medal } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { individualGroups } from "@/lib/dossard/challenge";
-import { formatElapsed, type HeatEntry } from "@/lib/dossard/race-api";
+import { type HeatEntry } from "@/lib/dossard/race-api";
 
 const statusLabels = {
   registered: "À courir",
@@ -80,8 +80,9 @@ export function GradeResults({
           chargés.
         </p>
       )}
+      <div className="grid items-start gap-4 p-4 lg:grid-cols-2">
       {shown.map((group) => (
-        <div key={group.category} className="border-b last:border-0">
+        <div key={group.category} className="min-w-0 overflow-hidden rounded-xl border">
           <div className="flex items-center justify-between gap-3 bg-slate-50 px-5 py-3">
             <h4 className="font-bold text-[#1154b3]">{group.category}</h4>
             <span className="text-xs text-slate-500">
@@ -89,14 +90,14 @@ export function GradeResults({
             </span>
           </div>
           <div className="cross-scroll">
-            <table className="cross-table min-w-[640px]">
+            <table className="cross-table w-full text-sm">
               <thead>
                 <tr className="text-left text-xs text-slate-500">
                   <th className="p-3">Rang catégorie</th>
                   <th className="p-3">Élève</th>
                   <th className="p-3">Classe</th>
                   <th className="p-3">Dossard</th>
-                  <th className="p-3">Temps / statut</th>
+                  <th className="p-3">Statut</th>
                   <th className="p-3">Arrivée commune</th>
                 </tr>
               </thead>
@@ -115,9 +116,7 @@ export function GradeResults({
                       {entry.participant.bib_number}
                     </td>
                     <td className="p-3">
-                      {entry.status === "finished"
-                        ? formatElapsed(entry.elapsed_ms)
-                        : statusLabels[entry.status]}
+                      {statusLabels[entry.status]}
                     </td>
                     <td className="p-3 text-slate-500">
                       {entry.finish_position == null
@@ -131,6 +130,7 @@ export function GradeResults({
           </div>
         </div>
       ))}
+      </div>
     </section>
   );
 }

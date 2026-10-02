@@ -8,7 +8,7 @@ import {
   individualGroups,
   rankWithinCategory,
 } from "./challenge";
-import { formatElapsed, type CloudHeat, type HeatEntry } from "./race-api";
+import { type CloudHeat, type HeatEntry } from "./race-api";
 
 const labels = {
   registered: "À courir",
@@ -21,15 +21,15 @@ function fileName(value: string) {
   return value.replace(/[\\/:*?"<>|]/g, "-").trim() || "résultats";
 }
 
-function overallChallenge(
+export function overallChallenge(
   courses: Array<{ heat: CloudHeat; entries: HeatEntry[] }>,
 ) {
   const totals = new Map<
     string,
-    { className: string; points: number; members: number; courses: number }
+    { className: string; points: number; members: number; courses: number; girls: number; boys: number; unknown: number }
   >();
   courses
-    .filter(({ heat }) => heat.challenge_enabled)
+    .filter(({ heat }) => heat.challenge_enabled && heat.status === "finished")
     .forEach(({ heat, entries }) => {
       buildChallenge(
         entries,
@@ -43,7 +43,16 @@ function overallChallenge(
           points: 0,
           members: 0,
           courses: 0,
+          girls: 0,
+          boys: 0,
+          unknown: 0,
         };
+        entries.filter(entry => classKey(entry.participant.class_name) === key).forEach(entry => {
+          const category = individualCategory(entry.participant.class_name, entry.participant.sex);
+          if (category.endsWith(" · filles")) current.girls += 1;
+          else if (category.endsWith(" · garçons")) current.boys += 1;
+          else current.unknown += 1;
+        });
         current.points += result.points;
         current.members += result.members;
         current.courses += 1;
@@ -79,7 +88,7 @@ export async function buildRaceWorkbook(
 
   if (
     kind === "classes" &&
-    courses.filter(({ heat }) => heat.challenge_enabled).length > 1
+    courses.some(({ heat }) => heat.challenge_enabled && heat.status === "finished")
   ) {
     const rows: unknown[][] = [
       ["Challenge interclasses général"],
@@ -88,25 +97,28 @@ export async function buildRaceWorkbook(
         "Le total général additionne les points obtenus par chaque classe dans toutes les courses terminées incluses dans cet export.",
       ],
       [],
-      ["Rang", "Classe", "Points cumulés", "Élèves comptabilisés", "Courses"],
+      ["Rang", "Classe", "Points cumulés", "Filles", "Garçons", "Sexe non renseigné", "Élèves comptabilisés", "Courses"],
     ];
     overallChallenge(courses).forEach((result, index) =>
       rows.push([
         index + 1,
         result.className,
         result.points,
+        result.girls,
+        result.boys,
+        result.unknown,
         result.members,
         result.courses,
       ]),
     );
-    append(rows, "Classement général", [8, 30, 18, 24, 12]);
+    append(rows, "Classement général", [8, 30, 18, 10, 10, 22, 24, 12]);
   }
 
   for (const [index, { heat, entries }] of courses.entries()) {
     const rows: unknown[][] = [[heat.name], []];
     if (kind === "individual") {
       rows.push([
-        "Rang d’arrivée",
+        "Arrivée commune",
         "Rang catégorie",
         "Catégorie (niveau et sexe)",
         "Dossard",
@@ -114,7 +126,6 @@ export async function buildRaceWorkbook(
         "Prénom",
         "Classe",
         "Sexe",
-        "Temps",
         "Statut",
       ]);
       const categoryRanks = rankWithinCategory(entries);
@@ -138,7 +149,6 @@ export async function buildRaceWorkbook(
             entry.participant.first_name,
             entry.participant.class_name,
             entry.participant.sex,
-            entry.elapsed_ms == null ? "" : formatElapsed(entry.elapsed_ms),
             labels[entry.status],
           ]);
         });
@@ -195,7 +205,7 @@ export async function buildRaceWorkbook(
       rows,
       `${index + 1} ${heat.name}`,
       kind === "individual"
-        ? [14, 14, 16, 12, 25, 22, 32, 10, 16, 18]
+        ? [18, 14, 26, 12, 25, 22, 32, 10, 18]
         : [28, 18, 25, 25, 18, 12],
     );
     if (kind === "individual") {
@@ -208,12 +218,11 @@ export async function buildRaceWorkbook(
           [],
           [
             "Rang catégorie",
-            "Rang d’arrivée",
+            "Arrivée commune",
             "Dossard",
             "Nom",
             "Prénom",
             "Classe",
-            "Temps",
             "Statut",
           ],
         ];
@@ -225,7 +234,6 @@ export async function buildRaceWorkbook(
             entry.participant.last_name,
             entry.participant.first_name,
             entry.participant.class_name,
-            entry.elapsed_ms == null ? "" : formatElapsed(entry.elapsed_ms),
             labels[entry.status],
           ]),
         );
@@ -233,7 +241,7 @@ export async function buildRaceWorkbook(
         append(
           gradeRows,
           `${index + 1} ${group.category} - ${heat.name}`,
-          [16, 16, 12, 25, 22, 30, 16, 18],
+          [16, 18, 12, 25, 22, 30, 18],
         );
       }
     }

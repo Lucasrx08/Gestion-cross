@@ -9,7 +9,8 @@ import {
 } from "../lib/dossard/challenge";
 import { parseCrossBackup } from "../lib/dossard/backup-validation";
 import { ScanQueue } from "../lib/dossard/scan-queue";
-import { buildRaceWorkbook } from "../lib/dossard/race-results";
+import { buildRaceWorkbook, overallChallenge } from "../lib/dossard/race-results";
+import { participantRoster, rosterPrintDocument } from "../lib/dossard/participant-roster";
 import {
   buildValidationChecks,
   validateParticipants,
@@ -283,7 +284,7 @@ test("Excel : arrivée commune + une feuille distincte par niveau, noms uniques 
   assert.equal(rows[4][0], 1);
   assert.equal(rows[5][0], 2);
   assert.equal(rows[5][1], 5);
-  assert.equal(rows[6][7], "Absent");
+  assert.equal(rows[6][6], "Absent");
 });
 const mixedBook = await buildRaceWorkbook([{ heat, entries: mixedSexEntries }], "individual");
 test("Excel mixte : feuilles filles/garçons distinctes et rangs cohérents avec l’arrivée commune", () => {
@@ -310,5 +311,38 @@ test("Excel 1 500 arrivées : aucune troncature, 750 par niveau", () => {
     1503,
   );
   assert.equal(individualGroups(large)[0].finished, 750);
+});
+test("Challenge général : filles et garçons additionnés par classe sur des courses séparées", () => {
+  const girls = [entry(1, "6e A", 1), entry(2, "6e B", 2)];
+  const boys = [entry(3, "6ème A", 2), entry(4, "6e B", 1)].map(e => ({ ...e, participant: { ...e.participant, sex: "M" } }));
+  const heats = [
+    { heat: { ...heat, id: "girls", selected_classes: ["6e A", "6e B"], challenge_classes: ["6e A", "6e B"], challenge_enabled: true }, entries: girls },
+    { heat: { ...heat, id: "boys", selected_classes: ["6ème A", "6e B"], challenge_classes: ["6ème A", "6e B"], challenge_enabled: true }, entries: boys },
+  ];
+  const result = overallChallenge(heats);
+  assert.equal(result.length, 2);
+  assert.deepEqual(result.map(r => [r.points, r.girls, r.boys, r.members, r.courses]), [[3, 1, 1, 2, 2], [3, 1, 1, 2, 2]]);
+  assert.deepEqual(overallChallenge([...heats, { ...heats[0], heat: { ...heats[0].heat, status: "running" } }, { ...heats[1], heat: { ...heats[1].heat, challenge_enabled: false } }]), result);
+});
+test("Tous les classements Excel : arrivée commune présente et temps supprimé", () => {
+  for (const name of mixedBook.SheetNames) {
+    const rows = XLSX.utils.sheet_to_json<unknown[]>(mixedBook.Sheets[name], { header: 1, blankrows: true });
+    assert(rows.some(row => row.includes("Arrivée commune")));
+    assert(!rows.some(row => row.includes("Temps")));
+  }
+});
+test("Liste de secours : classe, nom, prénom, numéro et code complet ; texte HTML protégé", () => {
+  const participants = [
+    { ...event.participants[0], lastName: "Zulu", className: "6e B", technicalId: "CROSS-0007", bibNumber: 7 },
+    { ...event.participants[1], lastName: "Albert", firstName: "Éloïse", className: "6e B", technicalId: "CROSS-0008", bibNumber: 8 },
+    { ...event.participants[0], lastName: "<script>", className: "6ème A", technicalId: "CROSS-0009", bibNumber: 9 },
+  ];
+  const groups = participantRoster(participants);
+  assert.equal(groups.length, 2);
+  assert.deepEqual(groups.find(g => g.className === "6e B")!.participants.map(p => p.bibNumber), [8, 7]);
+  const html = rosterPrintDocument("Cross & école", participants);
+  assert(html.includes("CROSS-0007") && html.includes("Éloïse") && html.includes("&lt;SCRIPT&gt;"));
+  assert(!html.includes("<script>"));
+  assert(html.includes("Cross &amp; école"));
 });
 console.log(`\n${checks} contrôles de fiabilité réussis.`);

@@ -16,7 +16,6 @@ import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import {
-  formatElapsed,
   isRetryableRaceError,
   raceErrorMessage,
   stationApi,
@@ -587,9 +586,6 @@ export function RaceStation({
                     </p>
                     <p className="text-2xl font-bold">
                       #{lastArrival.finish_position}
-                    </p>
-                    <p className="font-mono text-sm">
-                      {formatElapsed(lastArrival.elapsed_ms)}
                     </p>
                   </div>
                 </div>
