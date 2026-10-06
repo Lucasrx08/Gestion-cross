@@ -70,6 +70,7 @@ import {
 import { exportRaceResults, overallChallenge } from "@/lib/dossard/race-results";
 import { CourseProgramme } from "./course-programme";
 import { GradeResults } from "./grade-results";
+import { drawSocialResults } from "@/lib/dossard/social-results";
 
 interface OwnerState {
   event: CloudEvent | null;
@@ -88,6 +89,7 @@ interface ClassOption {
 }
 
 const letters = ["A", "B", "C", "D"];
+const gradeLabels: Record<string, string> = { "6e": "6ème", "5e": "5ème", "4e": "4ème", "3e": "3ème" };
 const isFemale = (value?: string) =>
   /^(f|fille|female|féminin|feminin|girl)$/i.test((value ?? "").trim());
 const isMale = (value?: string) =>
@@ -245,6 +247,7 @@ export function CourseStep({
   const [createOpen, setCreateOpen] = useState(false);
   const [shareOpen, setShareOpen] = useState(false);
   const [brandingOpen, setBrandingOpen] = useState(false);
+  const [socialPreview, setSocialPreview] = useState<{ dataUrl: string; fileName: string; story: boolean }>();
   const [statusOpen, setStatusOpen] = useState(false);
   const [qr, setQr] = useState("");
   const [heatName, setHeatName] = useState("");
@@ -267,7 +270,11 @@ export function CourseStep({
   const [challengeLoading, setChallengeLoading] = useState(false);
   const [challengeError, setChallengeError] = useState("");
   const [challengeRevision, setChallengeRevision] = useState(0);
-  const overallResults = overallChallenge(challengeCourses);
+  const [challengeGrade, setChallengeGrade] = useState("all");
+  const allOverallResults = overallChallenge(challengeCourses);
+  const overallResults = overallChallenge(challengeCourses, challengeGrade);
+  const challengeGrades = [...new Set(["6e", "5e", "4e", "3e", ...allOverallResults.map(result => gradeCategory(result.className))])].sort(compareCategories);
+  const challengeGradeLabel = challengeGrade === "all" ? "Tous les niveaux" : (gradeLabels[challengeGrade] ?? challengeGrade);
   const activeHeatRef = useRef<string | undefined>(undefined);
   const selectedSectionRef = useRef<HTMLElement>(null);
   const scrollRequested = useRef(false);
@@ -736,7 +743,7 @@ export function CourseStep({
   const printOverall = () => {
     if (challengeLoading || challengeError || !overallResults.length) return;
     const rows = overallResults.map((result, index) => `<tr><td>${index + 1}</td><td>${esc(result.className)}</td><td>${result.points}</td><td>${result.girls}</td><td>${result.boys}</td><td>${result.unknown}</td><td>${result.members}</td><td>${result.courses}</td></tr>`).join("");
-    printWindow(`${event.name} - challenge interclasses général`, `${documentHeader()}<h2>Challenge interclasses général</h2><p class="note">Filles et garçons d’une même classe sont additionnés, y compris dans des courses séparées. ${esc(challengeRule)} Seules les courses terminées avec challenge activé sont incluses.</p><table><thead><tr><th>Rang</th><th>Classe</th><th>Points cumulés</th><th>Filles</th><th>Garçons</th><th>Sexe non renseigné</th><th>Élèves comptabilisés</th><th>Courses</th></tr></thead><tbody>${rows}</tbody></table>`);
+    printWindow(`${event.name} - challenge interclasses - ${challengeGradeLabel}`, `${documentHeader()}<h2>Challenge interclasses · ${esc(challengeGradeLabel)}</h2><p class="note">Filles et garçons d’une même classe sont additionnés, y compris dans des courses séparées. ${esc(challengeRule)} Seules les courses terminées avec challenge activé sont incluses.</p><table><thead><tr><th>Rang</th><th>Classe</th><th>Points cumulés</th><th>Filles</th><th>Garçons</th><th>Sexe non renseigné</th><th>Élèves comptabilisés</th><th>Courses</th></tr></thead><tbody>${rows}</tbody></table>`);
   };
 
   const downloadResults = async (
@@ -760,7 +767,7 @@ export function CourseStep({
           return { heat: result.heat, entries: result.entries };
         }),
       );
-      await exportRaceResults(data, all ? event.name : courses[0].name, kind);
+      await exportRaceResults(data, all ? event.name : courses[0].name, kind, all && kind === "classes" ? challengeGrade : "all");
       toast.success("Résultats téléchargés au format Excel.");
     } catch (error) {
       toast.error(raceErrorMessage(error));
@@ -784,131 +791,36 @@ export function CourseStep({
     canvas.height = height;
     const ctx = canvas.getContext("2d");
     if (!ctx) return;
-    const primary = branding.primaryColor || "#1154b3",
-      secondary = branding.secondaryColor || "#fed60b",
-      accent = branding.accentColor || "#173970";
-    const gradient = ctx.createLinearGradient(0, 0, width, height);
-    gradient.addColorStop(0, primary);
-    gradient.addColorStop(1, mixColor(primary, "#000000", 0.25));
-    ctx.fillStyle = gradient;
-    ctx.fillRect(0, 0, width, height);
-    ctx.fillStyle = accent;
-    ctx.fillRect(0, 0, width, story ? 22 : 18);
-    ctx.globalAlpha = 0.28;
-    ctx.fillStyle = secondary;
-    ctx.beginPath();
-    ctx.arc(width * 0.92, height * 0.08, story ? 220 : 170, 0, Math.PI * 2);
-    ctx.fill();
-    ctx.globalAlpha = 1;
-    let logoHeight = 0;
-    const socialLogo =
-      branding.logoDataUrl ||
-      new URL("./logo-bon-sauveur-cross.png", window.location.href).toString();
-    if (socialLogo) {
-      try {
-        const image = await loadCanvasImage(socialLogo);
-        const maxW = story ? 280 : 220,
-          maxH = story ? 250 : 190;
-        const ratio = Math.min(maxW / image.width, maxH / image.height);
-        const w = image.width * ratio,
-          h = image.height * ratio;
-        ctx.drawImage(image, 70, 58, w, h);
-        logoHeight = h;
-      } catch {
-        /* export sans logo si image illisible */
-      }
+    let logo: HTMLImageElement | undefined;
+    try {
+      logo = await loadCanvasImage(branding.logoDataUrl || new URL("./logo-bon-sauveur-cross.png", window.location.href).toString());
+    } catch {
+      toast.warning("Le logo n’a pas pu être chargé. Vérifiez le logo dans « En-tête & visuels ».");
     }
-    const titleY = Math.max(story ? 345 : 260, 80 + logoHeight);
-    ctx.fillStyle = "#ffffff";
-    let titleSize = story ? 54 : 48;
-    const titleText = branding.title || event.name;
-    do {
-      ctx.font = `900 ${titleSize}px Arial`;
-      if (ctx.measureText(titleText).width <= width - 140) break;
-      titleSize -= 2;
-    } while (titleSize > 28);
-    ctx.fillText(titleText, 70, titleY - 82, width - 140);
-    ctx.font = `700 ${story ? 30 : 26}px Arial`;
-    ctx.fillStyle = mixColor("#ffffff", secondary, 0.28);
-    ctx.fillText(branding.subtitle || "", 70, titleY - 38);
-    ctx.fillStyle = accent;
-    ctx.fillRect(70, titleY, width - 140, story ? 112 : 96);
-    ctx.fillStyle = "#ffffff";
-    ctx.font = `900 ${story ? 64 : 58}px Arial`;
-    ctx.fillText(
-      kind === "classes"
-        ? "CHALLENGE INTERCLASSES"
-        : `RÉSULTATS ${selectedGroups[0]?.category ?? ""}`,
-      98,
-      titleY + (story ? 76 : 66),
-    );
-    const panelY = titleY + (story ? 150 : 130),
-      panelH = height - panelY - 115;
-    ctx.fillStyle = mixColor(secondary, "#ffffff", 0.92);
-    ctx.beginPath();
-    ctx.roundRect(55, panelY, width - 110, panelH, 34);
-    ctx.fill();
-    ctx.strokeStyle = secondary;
-    ctx.lineWidth = 4;
-    ctx.stroke();
-    ctx.fillStyle = primary;
-    let heatSize = story ? 48 : 42;
-    do {
-      ctx.font = `900 ${heatSize}px Arial`;
-      if (ctx.measureText(general ? "Classement général · filles + garçons" : selectedHeat!.name).width <= width - 180) break;
-      heatSize -= 2;
-    } while (heatSize > 26);
-    ctx.fillText(general ? "Classement général · filles + garçons" : selectedHeat!.name, 90, panelY + 80, width - 180);
-    const lines =
-      kind === "classes"
-        ? socialClassResults
-            .slice(0, story ? 8 : 6)
-            .map(
-              (result, index) =>
-                `${index + 1}. ${result.className}  ·  ${result.points} pts`,
-            )
-        : (
-            selectedGroups[0]?.entries.filter(
-              (entry) => entry.status === "finished",
-            ) ?? []
-          )
-            .slice(0, story ? 8 : 6)
-            .map(
-              (entry) =>
-                `${categoryRanks.get(entry.id)?.rank}. ${entry.participant.first_name} ${entry.participant.last_name.toUpperCase()}  ·  ${entry.participant.class_name}`,
-            );
-    ctx.font = `700 ${story ? 38 : 32}px Arial`;
-    lines.forEach((line, index) => {
-      ctx.fillStyle = index === 0 ? accent : primary;
-      ctx.fillText(
-        line,
-        95,
-        panelY + 155 + index * (story ? 92 : 74),
-        width - 190,
-      );
-    });
-    if (kind === "classes" && socialClassResults.length) {
-      const penalties = challengePenalties(entries);
-      ctx.font = `600 ${story ? 25 : 22}px Arial`;
-      ctx.fillStyle = "#64748b";
-      ctx.fillText(
-        general ? `${challengeCourses.length} courses terminées · tous les élèves comptent` : `Tous les élèves · absent / dispensé : ${penalties.absent} pts · abandon : ${penalties.dnf} pts`,
-        95,
-        panelY + panelH - 55,
-        width - 190,
-      );
-    }
-    ctx.fillStyle = "#ffffff";
-    ctx.font = `700 ${story ? 24 : 22}px Arial`;
-    ctx.fillText("Gestion Cross · L. RIGAUX", 70, height - 55);
-    const link = document.createElement("a");
-    link.download =
-      `${general ? event.name + "-challenge-general" : selectedHeat!.name}-${kind}-${story ? "story" : "post"}.png`.replace(
+    const penalties = challengePenalties(entries);
+    drawSocialResults(ctx, {
+      story,
+      title: branding.title || event.name,
+      subtitle: branding.subtitle || "",
+      heading: kind === "classes" ? "CHALLENGE INTERCLASSES" : "CLASSEMENT INDIVIDUEL",
+      category: general ? `${challengeGradeLabel} · filles + garçons` : kind === "individual" ? selectedGroups[0]?.category || "" : selectedHeat!.name,
+      note: kind === "classes" ? general ? "Courses terminées · tous les élèves comptent" : `Absent / dispensé : ${penalties.absent} pts · abandon : ${penalties.dnf} pts` : selectedHeat!.name,
+      primary: branding.primaryColor || "#1154b3",
+      secondary: branding.secondaryColor || "#fed60b",
+      rows: kind === "classes"
+        ? socialClassResults.map((result, index) => ({ rank: index + 1, label: result.className, detail: `${result.points} pts` }))
+        : (selectedGroups[0]?.entries.filter(entry => entry.status === "finished") || []).map(entry => ({
+            rank: categoryRanks.get(entry.id)?.rank || 0,
+            label: `${entry.participant.first_name} ${entry.participant.last_name.toUpperCase()}`,
+            detail: entry.participant.class_name,
+          })),
+    }, logo);
+    const fileName =
+      `${general ? event.name + "-challenge-general" + (challengeGrade === "all" ? "" : "-" + challengeGrade) : selectedHeat!.name}-${kind}-${story ? "story" : "post"}.png`.replace(
         /\s+/g,
         "-",
       );
-    link.href = canvas.toDataURL("image/png");
-    link.click();
+    setSocialPreview({ dataUrl: canvas.toDataURL("image/png"), fileName, story });
   };
 
   const filteredClassOptions = classOptions.filter(
@@ -1137,7 +1049,14 @@ export function CourseStep({
             <div><h3 className="text-xl font-bold">Challenge interclasses général</h3><p className="mt-1 text-sm text-slate-500">Filles + garçons de la même classe, même dans des courses séparées. Cumul des {challengeCourses.length} course(s) terminée(s) avec challenge activé.</p><p className="mt-1 text-xs text-slate-500">{challengeRule}</p></div>
             <div className="flex flex-wrap gap-2"><Button variant="outline" disabled={challengeLoading} onClick={() => setChallengeRevision(value => value + 1)}>Actualiser le challenge</Button>{courseView === "results" && <><Button disabled={challengeLoading || !!challengeError || !overallResults.length} onClick={printOverall}><Printer />Imprimer le challenge général</Button><Button variant="outline" disabled={loading || challengeLoading || !!challengeError || !overallResults.length} onClick={() => void downloadResults("classes", true)}><FileSpreadsheet />Excel général</Button><Button variant="outline" disabled={challengeLoading || !!challengeError || !overallResults.length} onClick={() => void social("classes", false, true)}><ImageIcon />Post général</Button><Button variant="outline" disabled={challengeLoading || !!challengeError || !overallResults.length} onClick={() => void social("classes", true, true)}><Download />Story générale</Button></>}</div>
           </div>
-          {challengeLoading ? <p className="p-5" role="status">Calcul du cumul filles et garçons…</p> : challengeError ? <p className="p-5 text-red-700" role="alert">{challengeError}</p> : !overallResults.length ? <p className="p-5 text-sm text-slate-500">Le challenge apparaîtra après la fin d’une course avec challenge activé.</p> : <div className="cross-scroll"><table className="cross-table w-full"><thead><tr className="bg-blue-50 text-left text-xs text-slate-500"><th>Rang</th><th>Classe</th><th>Points cumulés</th><th>Filles</th><th>Garçons</th><th>Sexe non renseigné</th><th>Élèves comptabilisés</th><th>Courses</th></tr></thead><tbody>{overallResults.map((result, index) => <tr className="border-t" key={classKey(result.className)}><td className="font-bold">{index + 1}</td><td className="font-bold">{result.className}</td><td>{result.points}</td><td>{result.girls}</td><td>{result.boys}</td><td>{result.unknown || "—"}</td><td>{result.members}</td><td>{result.courses}</td></tr>)}</tbody></table></div>}
+          <div className="border-b bg-slate-50/60 p-4">
+            <div className="flex flex-wrap gap-2" aria-label="Filtrer le challenge interclasses par niveau">
+              <Button size="sm" variant={challengeGrade === "all" ? "default" : "outline"} aria-pressed={challengeGrade === "all"} onClick={() => setChallengeGrade("all")}>Tous les niveaux</Button>
+              {challengeGrades.map(grade => <Button key={grade} size="sm" variant={challengeGrade === grade ? "default" : "outline"} aria-pressed={challengeGrade === grade} onClick={() => setChallengeGrade(grade)}>{gradeLabels[grade] ?? grade}</Button>)}
+            </div>
+            <p className="mt-2 text-xs text-slate-500">{challengeGradeLabel} · Le filtre s’applique au tableau, à l’impression, à l’Excel général et aux posts et stories du challenge général. Filles et garçons restent additionnés.</p>
+          </div>
+          {challengeLoading ? <p className="p-5" role="status">Calcul du cumul filles et garçons…</p> : challengeError ? <p className="p-5 text-red-700" role="alert">{challengeError}</p> : !overallResults.length ? <p className="p-5 text-sm text-slate-500">{challengeGrade === "all" ? "Le challenge apparaîtra après la fin d’une course avec challenge activé." : `Aucun résultat de challenge pour le niveau ${challengeGradeLabel}.`}</p> : <div className="cross-scroll"><table className="cross-table w-full"><thead><tr className="bg-blue-50 text-left text-xs text-slate-500"><th>Rang</th><th>Classe</th><th>Points cumulés</th><th>Filles</th><th>Garçons</th><th>Sexe non renseigné</th><th>Élèves comptabilisés</th><th>Courses</th></tr></thead><tbody>{overallResults.map((result, index) => <tr className="border-t" key={classKey(result.className)}><td className="font-bold">{index + 1}</td><td className="font-bold">{result.className}</td><td>{result.points}</td><td>{result.girls}</td><td>{result.boys}</td><td>{result.unknown || "—"}</td><td>{result.members}</td><td>{result.courses}</td></tr>)}</tbody></table></div>}
         </section>
       )}
       {courseView === "results" && heats.some((heat) => heat.status === "finished") && (
@@ -1752,6 +1671,13 @@ export function CourseStep({
         </DialogContent>
       </Dialog>
 
+      <Dialog open={!!socialPreview} onOpenChange={open => { if (!open) setSocialPreview(undefined); }}>
+        <DialogContent className="flex max-h-[calc(100dvh-2rem)] flex-col sm:max-w-2xl">
+          <DialogHeader><DialogTitle>Aperçu {socialPreview?.story ? "de la story" : "de la publication"}</DialogTitle><DialogDescription>Vérifiez le logo et le classement avant de télécharger le visuel.</DialogDescription></DialogHeader>
+          {socialPreview && <div className="min-h-0 overflow-auto rounded-xl bg-slate-100 p-3"><Image unoptimized src={socialPreview.dataUrl} alt="Visuel des résultats sur fond blanc" width={1080} height={socialPreview.story ? 1920 : 1080} className="mx-auto h-auto max-h-[65dvh] w-auto max-w-full bg-white object-contain" /></div>}
+          <DialogFooter><Button variant="outline" onClick={() => setSocialPreview(undefined)}>Fermer</Button><Button onClick={() => { if (!socialPreview) return; const link = document.createElement("a"); link.download = socialPreview.fileName; link.href = socialPreview.dataUrl; link.click(); }}><Download />Télécharger le PNG</Button></DialogFooter>
+        </DialogContent>
+      </Dialog>
       <Dialog open={shareOpen} onOpenChange={setShareOpen}>
         <DialogContent className="sm:max-w-lg">
           <DialogHeader>

@@ -11,6 +11,7 @@ import { parseCrossBackup } from "../lib/dossard/backup-validation";
 import { ScanQueue } from "../lib/dossard/scan-queue";
 import { buildRaceWorkbook, overallChallenge } from "../lib/dossard/race-results";
 import { participantRoster, rosterPrintDocument } from "../lib/dossard/participant-roster";
+import { drawSocialResults } from "../lib/dossard/social-results";
 import {
   buildValidationChecks,
   validateParticipants,
@@ -344,5 +345,35 @@ test("Liste de secours : classe, nom, prénom, numéro et code complet ; texte H
   assert(html.includes("CROSS-0007") && html.includes("Éloïse") && html.includes("&lt;SCRIPT&gt;"));
   assert(!html.includes("<script>"));
   assert(html.includes("Cross &amp; école"));
+});
+test("Challenge filtré : variantes 6ème/6e regroupées, points et effectifs filles/garçons conservés", () => {
+  const data = [{ heat: { ...heat, challenge_enabled: true, challenge_classes: [], selected_classes: [] }, entries }];
+  const all = overallChallenge(data);
+  const sixth = overallChallenge(data, "6e");
+  assert.deepEqual(sixth, all.filter(r => gradeCategory(r.className) === "6e"));
+  assert.equal(sixth.length, 2);
+  assert.deepEqual(overallChallenge(data, "3e"), []);
+});
+const filteredClassesBook = await buildRaceWorkbook([{ heat: { ...heat, challenge_enabled: true, challenge_classes: [], selected_classes: [] }, entries }], "classes", "6e");
+test("Excel du challenge filtré : général et détails contiennent uniquement les classes du niveau choisi", () => {
+  const rows = filteredClassesBook.SheetNames.flatMap(name => XLSX.utils.sheet_to_json<unknown[]>(filteredClassesBook.Sheets[name], { header: 1, blankrows: true }));
+  assert(rows.some(row => row.includes("6e A")));
+  assert(rows.some(row => row.includes("6ème C")));
+  assert(!rows.some(row => row.some(cell => ["5e B", "CM1 A", "CM2 B", "CM1B", "CM1"].includes(String(cell)))));
+});
+test("Visuels blancs : logo séparé du titre, deux couleurs et lignes dans le cadre post/story", () => {
+  for (const story of [false, true]) {
+    const texts: Array<{value: string; y: number; colour: string}> = [];
+    const rects: Array<{colour: string; width: number; height: number}> = [];
+    let logoBottom = 0;
+    const ctx = { fillStyle: "", font: "", textAlign: "", fillRect(this: {fillStyle: string}, _x: number, _y: number, width: number, height: number) { rects.push({ colour: this.fillStyle, width, height }); }, measureText(this: {font: string}, value: string) { return { width: value.length * Number.parseInt(this.font.split(" ")[1]) * .56 }; }, fillText(this: {fillStyle: string}, value: string, _x: number, y: number) { texts.push({ value, y, colour: this.fillStyle }); }, drawImage(_logo: unknown, _x: number, y: number, _w: number, h: number) { logoBottom = y + h; }, beginPath() {}, moveTo() {}, lineTo() {}, stroke() {} } as unknown as CanvasRenderingContext2D;
+    drawSocialResults(ctx, { story, primary: "#bf1281", secondary: "#f198a5", title: "LA ROSE RUN 2026", subtitle: "Saint-Lô", heading: "CHALLENGE INTERCLASSES", category: "6ème · filles + garçons", note: "Tous les élèves comptent", rows: Array.from({length: 10}, (_,i) => ({rank: i + 1, label: "6e AVIGNON", detail: "130 pts"})) }, {width: 240, height: 320} as HTMLImageElement);
+    assert.equal(rects[0].colour, "#ffffff");
+    assert(texts[0].y > logoBottom + 40);
+    const resultRows = texts.filter(t => t.value === "6e AVIGNON");
+    assert.equal(resultRows.length, story ? 8 : 6);
+    assert(resultRows.at(-1)!.y < (story ? 1920 : 1080) - 125);
+    assert(texts.every(t => ["#bf1281", "#f198a5"].includes(t.colour)));
+  }
 });
 console.log(`\n${checks} contrôles de fiabilité réussis.`);

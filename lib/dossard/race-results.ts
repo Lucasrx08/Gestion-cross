@@ -4,6 +4,7 @@ import {
   challengePoints,
   challengeRule,
   classKey,
+  gradeCategory,
   individualCategory,
   individualGroups,
   rankWithinCategory,
@@ -23,6 +24,7 @@ function fileName(value: string) {
 
 export function overallChallenge(
   courses: Array<{ heat: CloudHeat; entries: HeatEntry[] }>,
+  grade = "all",
 ) {
   const totals = new Map<
     string,
@@ -59,7 +61,7 @@ export function overallChallenge(
         totals.set(key, current);
       });
     });
-  return [...totals.values()].sort(
+  return [...totals.values()].filter(result => grade === "all" || gradeCategory(result.className) === grade).sort(
     (a, b) =>
       a.points - b.points || a.className.localeCompare(b.className, "fr"),
   );
@@ -68,6 +70,7 @@ export function overallChallenge(
 export async function buildRaceWorkbook(
   courses: Array<{ heat: CloudHeat; entries: HeatEntry[] }>,
   kind: "individual" | "classes",
+  grade = "all",
 ) {
   const XLSX = await import("xlsx");
   const book = XLSX.utils.book_new();
@@ -91,7 +94,7 @@ export async function buildRaceWorkbook(
     courses.some(({ heat }) => heat.challenge_enabled && heat.status === "finished")
   ) {
     const rows: unknown[][] = [
-      ["Challenge interclasses général"],
+      [grade === "all" ? "Challenge interclasses général" : `Challenge interclasses · ${grade}`],
       [challengeRule],
       [
         "Le total général additionne les points obtenus par chaque classe dans toutes les courses terminées incluses dans cet export.",
@@ -99,7 +102,7 @@ export async function buildRaceWorkbook(
       [],
       ["Rang", "Classe", "Points cumulés", "Filles", "Garçons", "Sexe non renseigné", "Élèves comptabilisés", "Courses"],
     ];
-    overallChallenge(courses).forEach((result, index) =>
+    overallChallenge(courses, grade).forEach((result, index) =>
       rows.push([
         index + 1,
         result.className,
@@ -115,6 +118,8 @@ export async function buildRaceWorkbook(
   }
 
   for (const [index, { heat, entries }] of courses.entries()) {
+    const classResults = buildChallenge(entries, heat.challenge_classes.length ? heat.challenge_classes : heat.selected_classes).filter(result => grade === "all" || gradeCategory(result.className) === grade);
+    if (kind === "classes" && !classResults.length) continue;
     const rows: unknown[][] = [[heat.name], []];
     if (kind === "individual") {
       rows.push([
@@ -159,12 +164,7 @@ export async function buildRaceWorkbook(
         [],
         ["Rang", "Classe", "Points", "Élèves comptabilisés"],
       );
-      buildChallenge(
-        entries,
-        heat.challenge_classes.length
-          ? heat.challenge_classes
-          : heat.selected_classes,
-      ).forEach((result, position) =>
+      classResults.forEach((result, position) =>
         rows.push([
           position + 1,
           result.className,
@@ -179,12 +179,7 @@ export async function buildRaceWorkbook(
       );
       const penalties = challengePenalties(entries);
       const selectedClasses = new Set(
-        buildChallenge(
-          entries,
-          heat.challenge_classes.length
-            ? heat.challenge_classes
-            : heat.selected_classes,
-        ).map((result) => classKey(result.className)),
+        classResults.map((result) => classKey(result.className)),
       );
       entries
         .filter((entry) =>
@@ -253,12 +248,13 @@ export async function exportRaceResults(
   courses: Array<{ heat: CloudHeat; entries: HeatEntry[] }>,
   name: string,
   kind: "individual" | "classes",
+  grade = "all",
 ) {
   const XLSX = await import("xlsx");
-  const book = await buildRaceWorkbook(courses, kind);
+  const book = await buildRaceWorkbook(courses, kind, grade);
   if (book.SheetNames.length)
     XLSX.writeFile(
       book,
-      `${fileName(name)}-${kind === "individual" ? "classements" : "challenge-interclasses"}.xlsx`,
+      `${fileName(name)}-${kind === "individual" ? "classements" : "challenge-interclasses"}${grade === "all" ? "" : `-${fileName(grade)}`}.xlsx`,
     );
 }
