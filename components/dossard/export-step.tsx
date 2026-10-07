@@ -8,6 +8,7 @@ import { StepHeading } from "./step-heading";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
+import { Tabs, TabsList, TabsTrigger, TabsContent } from "@/components/ui/tabs";
 import { Progress } from "@/components/ui/progress";
 import { RadioGroup, RadioGroupItem } from "@/components/ui/radio-group";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
@@ -43,6 +44,7 @@ export function ExportStep({ event, onChange, selectedIds, initialSingleId }: Ex
     () => [...new Set(event.participants.map((participant) => participant.className).filter(Boolean))].sort((a, b) => a.localeCompare(b, "fr")),
     [event.participants],
   );
+  const [exportTab, setExportTab] = useState("bibs");
   const [mode, setMode] = useState<ExportMode>(initialSingleId ? "single" : "all");
   const [className, setClassName] = useState(classes[0] ?? "");
   const [from, setFrom] = useState(event.numbering.start);
@@ -119,15 +121,17 @@ export function ExportStep({ event, onChange, selectedIds, initialSingleId }: Ex
 
   return (
     <div className="space-y-6">
-  <StepHeading icon={Printer} title="Imprimer les dossards" description="Choisissez les élèves à imprimer et téléchargez votre PDF prêt pour le format A4." />
-      <section className="cross-panel flex flex-wrap items-center gap-4 p-5">
-        <div className="min-w-0 flex-1">
-          <h2 className="font-bold">Liste de secours par classe</h2>
-          <p className="text-sm text-slate-500">Tous les élèves, classés par classe puis par nom : nom, prénom et dossard associé. 30 élèves par page : une classe de 25 ou 26 élèves tient sur une feuille. À garder au poste de scan en cas de dossard perdu.</p>
-        </div>
-        <Button variant="outline" disabled={!event.participants.length || rosterBusy} onClick={()=>void printRoster()}><Printer />{rosterBusy ? "Création…" : "Liste par classe · PDF / impression"}</Button>
-      </section>
-      <PocketEditor event={event} onChange={onChange} classes={classes} />
+      <StepHeading icon={Printer} title="Dossards & impressions" description="Préparez vos dossards, vos listes et vos pochettes, ou exportez la base des élèves." />
+      <Tabs value={exportTab} onValueChange={setExportTab} className="gap-5">
+        <TabsList aria-label="Supports et exports des dossards" className="cross-panel grid h-auto w-full grid-cols-2 gap-2 p-2 xl:grid-cols-4 group-data-[orientation=horizontal]/tabs:h-auto">
+          {[
+            {value:"bibs",label:"Impression des dossards"},
+            {value:"roster",label:"Liste de secours par classe"},
+            {value:"base",label:"Exporter la base"},
+            {value:"pockets",label:"Pochettes de classes"},
+          ].map(tab => <TabsTrigger key={tab.value} value={tab.value} className="h-auto min-h-11 whitespace-normal px-3 py-3 font-semibold data-[state=active]:bg-primary data-[state=active]:text-primary-foreground">{tab.label}</TabsTrigger>)}
+        </TabsList>
+        <TabsContent value="bibs" className="space-y-5">
       {!ready && (
         <section className="flex gap-3 rounded-2xl border border-red-200 bg-red-50 p-4 text-red-800">
           <ShieldAlert />
@@ -261,6 +265,17 @@ export function ExportStep({ event, onChange, selectedIds, initialSingleId }: Ex
         </aside>
       </section>
 
+        </TabsContent>
+        <TabsContent value="roster">
+      <section className="cross-panel flex flex-wrap items-center gap-4 p-5">
+        <div className="min-w-0 flex-1">
+          <h2 className="font-bold">Liste de secours par classe</h2>
+          <p className="text-sm text-slate-500">Tous les élèves, classés par classe puis par nom : nom, prénom et dossard associé. 30 élèves par page : une classe de 25 ou 26 élèves tient sur une feuille. À garder au poste de scan en cas de dossard perdu.</p>
+        </div>
+        <Button variant="outline" disabled={!event.participants.length || rosterBusy} onClick={()=>void printRoster()}><Printer />{rosterBusy ? "Création…" : "Liste par classe · PDF / impression"}</Button>
+      </section>
+        </TabsContent>
+        <TabsContent value="base">
       <section className="cross-panel p-5">
         <div className="flex flex-col gap-4 sm:flex-row sm:justify-between">
           <div>
@@ -273,6 +288,11 @@ export function ExportStep({ event, onChange, selectedIds, initialSingleId }: Ex
           </div>
         </div>
       </section>
+        </TabsContent>
+        <TabsContent value="pockets" forceMount className={exportTab === "pockets" ? "" : "hidden"}>
+          <PocketEditor event={event} onChange={onChange} classes={classes} />
+        </TabsContent>
+      </Tabs>
     </div>
   );
 }
