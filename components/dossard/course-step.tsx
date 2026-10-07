@@ -663,12 +663,12 @@ export function CourseStep({
       }
       updateBranding({
         logoDataUrl: dataUrl,
-        ...(palette[0] ? { primaryColor: palette[0] } : {}),
-        ...(palette[1] ? { secondaryColor: palette[1] } : {}),
-        ...(palette[2] ? { accentColor: palette[2] } : {}),
+        ...(palette[0] && !event.resultBranding?.primaryColor ? { primaryColor: palette[0] } : {}),
+        ...(palette[1] && !event.resultBranding?.secondaryColor ? { secondaryColor: palette[1] } : {}),
+        ...(palette[2] && !event.resultBranding?.accentColor ? { accentColor: palette[2] } : {}),
       });
       if (palette.length >= 2)
-        toast.success("Logo ajouté et couleurs principales détectées.");
+        toast.success("Logo ajouté. Les couleurs déjà choisies sont conservées.");
     };
     reader.readAsDataURL(file);
   };
@@ -702,10 +702,8 @@ export function CourseStep({
       });
   };
   const documentHeader = () => {
-    const logo =
-      branding.logoDataUrl ||
-      new URL("./logo-bon-sauveur-cross.png", window.location.href).toString();
-    return `<header><img src="${esc(logo)}"><div><h1>${esc(branding.title || event.name)}</h1><p>${esc(branding.subtitle || "")}</p></div></header>`;
+    const logo = branding.logoDataUrl;
+    return `<header>${logo ? `<img src="${esc(logo)}" alt="Logo de l’événement">` : ""}<div><h1>${esc(branding.title || event.name)}</h1><p>${esc(branding.subtitle || "")}</p></div></header>`;
   };
   const printIndividual = () => {
     if (!selectedHeat) return;
@@ -724,6 +722,15 @@ export function CourseStep({
       `${selectedHeat.name} - individuel`,
       `${documentHeader()}<h2>${esc(selectedHeat.name)} · Classements par niveau et sexe</h2><p class="note">Le rang d’arrivée est commun à tous. Chaque niveau a un classement filles et un classement garçons ; les classes du même niveau et du même sexe sont regroupées.</p>${sections}`,
     );
+  };
+  const printBackupSheet = () => {
+    if (!selectedHeat || entriesLoading) return;
+    const pageCount = Math.max(1, Math.ceil(entries.length / 25));
+    const pages = Array.from({ length: pageCount }, (_, page) => {
+      const rows = Array.from({ length: 25 }, (_, line) => `<tr><td>${page * 25 + line + 1}</td><td></td><td></td></tr>`).join("");
+      return `<section class="backup-page">${documentHeader()}<h2>${esc(selectedHeat.name)} · Feuille de secours</h2><p>${esc(event.year)} · ${esc(event.location || "")} · Feuille ${page + 1} / ${pageCount}</p><p class="backup-fields">Date : __________________ &nbsp; Poste / tronçon : __________________<br>Dernier dossard confirmé : ______________ &nbsp; Dernière arrivée confirmée : __________</p><p class="backup-instructions">Noter les dossards dans l’ordre du passage, tous niveaux et sexes mélangés. Si la saisie commence pendant la course, corriger les numéros d’ordre selon la dernière arrivée confirmée. Avec plusieurs postes, conserver l’ordre des tronçons A → B → C → D.</p><table><thead><tr><th style="width:18%">Ordre d’arrivée</th><th style="width:32%">Numéro de dossard</th><th>Remarque</th></tr></thead><tbody>${rows}</tbody></table><p class="backup-footer">Saisir les dossards manquants dans cet ordre avant de clôturer la course. Vérifier les scans en attente pour éviter les doublons. · Gestion Cross · L. RIGAUX</p></section>`;
+    }).join("");
+    printWindow(`${selectedHeat.name} - feuille de secours`, `<style>@page{size:A4 portrait;margin:12mm}.backup-page{break-after:page;page-break-after:always}.backup-page:last-of-type{break-after:auto;page-break-after:auto}.backup-page header{margin-bottom:3mm;padding-bottom:3mm;border-bottom-width:2px;gap:4mm}.backup-page header img{max-width:22mm;max-height:18mm}.backup-page h1{font-size:19px}.backup-page h2{font-size:17px;margin:3mm 0 2mm}.backup-page p{font-size:11px;margin:2mm 0;color:#334155}.backup-page .backup-fields{line-height:1.9}.backup-page .backup-instructions{font-size:10px;line-height:1.35}.backup-page table{margin-top:3mm;table-layout:fixed}.backup-page th{font-size:11px;padding:2mm;border:1px solid #94a3b8}.backup-page td{height:6.5mm;padding:0 2mm;border:1px solid #94a3b8;font-size:11px}.backup-page .backup-footer{font-size:9px;margin-top:3mm}body>.footer{display:none}</style>${pages}`);
   };
   const printClasses = () => {
     if (!selectedHeat || !classResults.length) return;
@@ -784,6 +791,10 @@ export function CourseStep({
         "Choisissez une catégorie dans « Classements par niveau et sexe » avant de créer le visuel.",
       );
     if (!selectedHeat && !general) return;
+    if (!branding.logoDataUrl) {
+      setBrandingOpen(true);
+      return toast.error("Ajoutez le logo de votre événement dans « En-tête & visuels » avant de créer une publication ou une story.");
+    }
     const width = 1080,
       height = story ? 1920 : 1080;
     const canvas = document.createElement("canvas");
@@ -793,9 +804,10 @@ export function CourseStep({
     if (!ctx) return;
     let logo: HTMLImageElement | undefined;
     try {
-      logo = await loadCanvasImage(branding.logoDataUrl || new URL("./logo-bon-sauveur-cross.png", window.location.href).toString());
+      logo = await loadCanvasImage(branding.logoDataUrl);
     } catch {
-      toast.warning("Le logo n’a pas pu être chargé. Vérifiez le logo dans « En-tête & visuels ».");
+      setBrandingOpen(true);
+      return toast.error("Le logo de l’événement n’a pas pu être chargé. Ajoutez-le à nouveau dans « En-tête & visuels ».");
     }
     const penalties = challengePenalties(entries);
     drawSocialResults(ctx, {
@@ -1368,6 +1380,13 @@ export function CourseStep({
             </section>
           )}
 
+          {courseView === "results" && (
+            <section className="cross-panel p-5 sm:p-6">
+              <h3 className="text-lg font-bold">Feuille de secours · {selectedHeat.name}</h3>
+              <p className="mt-1 text-sm text-slate-500">À imprimer avant la course : en-tête personnalisé, ordre d’arrivée, dossards et remarques. 25 lignes par feuille, avec assez de feuilles pour les élèves inscrits.</p>
+              <Button className="mt-4" variant="outline" disabled={entriesLoading} onClick={printBackupSheet}><Printer />Imprimer la feuille de secours</Button>
+            </section>
+          )}
           {courseView === "results" && selectedHeat.status === "finished" && (
             <section className="cross-panel p-5 sm:p-6">
               <p className="text-xs font-bold uppercase tracking-widest text-[#1154b3]">
@@ -1770,8 +1789,7 @@ export function CourseStep({
                 onChange={(event) => uploadLogo(event.target.files?.[0])}
               />
               <p className="mt-1 text-xs text-slate-500">
-                À l’import, Gestion Cross essaie automatiquement de détecter les
-                couleurs principales du logo. Vous pouvez ensuite les ajuster.
+                Ce logo sera utilisé sur les publications, les stories et les feuilles imprimées. Les couleurs déjà choisies sont conservées ; les couleurs non définies sont détectées à l’import. Vous pouvez ensuite les ajuster.
               </p>
             </div>
             {branding.logoDataUrl && (
