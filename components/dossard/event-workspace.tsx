@@ -6,6 +6,7 @@ import {
   ArrowLeft,
   ArrowRight,
   LayoutDashboard,
+  Palette,
   CheckCircle2,
   CloudOff,
   FileImage,
@@ -37,6 +38,8 @@ import {
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
+import { EventBrandingDialog } from "./event-branding-dialog";
+import { resolveEventBranding } from "@/lib/dossard/event-branding";
 import { CourseStep } from "./course-step";
 import { ExportStep } from "./export-step";
 import { LayoutStep } from "./layout-step";
@@ -102,9 +105,10 @@ export function EventWorkspace({
   useEffect(() => {
     window.scrollTo({ top: 0, behavior: "auto" });
   }, [step]);
-  const branding = event.resultBranding;
+  const [brandingOpen, setBrandingOpen] = useState(false);
+  const branding = resolveEventBranding(event);
   const primary = branding?.primaryColor || "#1154b3";
-  const accent = branding?.accentColor || "#fed60b";
+  const accent = branding?.secondaryColor || "#fed60b";
   const logo =
     branding?.logoDataUrl || publicAsset("/logo-bon-sauveur-cross.png");
 
@@ -137,6 +141,7 @@ export function EventWorkspace({
         } as CSSProperties
       }
     >
+      <EventBrandingDialog event={event} onChange={onChange} open={brandingOpen} onOpenChange={setBrandingOpen} />
       <header
         className="sticky top-0 z-40 border-b border-border border-t-4 bg-white shadow-sm"
         style={{ borderTopColor: primary }}
@@ -249,14 +254,24 @@ export function EventWorkspace({
         )}
         <Tabs value={step} onValueChange={(value) => setStep(value as Step)}>
           <TabsContent value="overview">
-            <section className="mb-6 overflow-hidden rounded-[1.75rem] bg-gradient-to-br from-[#102347] via-[#1154b3] to-[#277bd6] p-6 text-white shadow-lg sm:p-9">
-              <p className="text-xs font-bold uppercase tracking-[.2em] text-[#fed60b]">
+            <section className="cross-panel mb-6 flex flex-wrap items-center gap-5 p-5 sm:p-6">
+              {branding.logoDataUrl && <Image src={branding.logoDataUrl} alt="Logo de l’événement" width={88} height={88} unoptimized className="max-h-22 w-22 object-contain" />}
+              <div className="min-w-0 flex-1">
+                <h2 className="text-xl font-bold" style={{color: primary}}>Identité visuelle de l’événement</h2>
+                <p className="mt-1 text-sm text-muted-foreground">Un seul en-tête pour les listes, classements, challenges, feuilles de secours et visuels à publier.</p>
+                <p className="mt-2 text-sm font-semibold">{branding.title}</p>
+                <div className="mt-2 flex items-center gap-2"><span className="size-5 rounded-full border" style={{backgroundColor:primary}} /><span className="size-5 rounded-full border" style={{backgroundColor:branding.secondaryColor}} /><span className="text-xs text-muted-foreground">{branding.logoDataUrl ? "Logo personnalisé enregistré" : "Logo de l’événement à ajouter"}</span></div>
+              </div>
+              <Button variant="outline" onClick={() => setBrandingOpen(true)}><Palette />En-tête & identité visuelle</Button>
+            </section>
+            <section className="mb-6 overflow-hidden rounded-[1.75rem] p-6 text-white shadow-lg sm:p-9" style={{backgroundColor: primary}}>
+              <p className="text-xs font-bold uppercase tracking-[.2em] text-white/80">
                 Votre centre d’organisation
               </p>
               <h1 className="mt-3 text-3xl font-bold sm:text-4xl">
                 Un cross prêt, du dossard au podium.
               </h1>
-              <p className="mt-3 max-w-2xl text-sm leading-relaxed text-blue-100 sm:text-base">
+              <p className="mt-3 max-w-2xl text-sm leading-relaxed text-white/90 sm:text-base">
                 Préparez vos élèves et vos dossards, organisez les départs, puis
                 retrouvez les classements de chaque niveau et le challenge
                 interclasses.

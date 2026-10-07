@@ -45,7 +45,7 @@ import {
   SelectTrigger,
   SelectValue,
 } from "@/components/ui/select";
-import type { RaceEvent, ResultBranding } from "@/lib/dossard/types";
+import type { RaceEvent } from "@/lib/dossard/types";
 import {
   type CloudEvent,
   type CloudHeat,
@@ -70,6 +70,8 @@ import {
 import { exportRaceResults, overallChallenge } from "@/lib/dossard/race-results";
 import { CourseProgramme } from "./course-programme";
 import { GradeResults } from "./grade-results";
+import { EventBrandingDialog } from "./event-branding-dialog";
+import { resolveEventBranding, eventDocumentHeader, eventDocumentStyles, waitForDocumentAssets } from "@/lib/dossard/event-branding";
 import { drawSocialResults } from "@/lib/dossard/social-results";
 
 interface OwnerState {
@@ -113,88 +115,6 @@ function prettyClass(value: string) {
 function classGroup(value: string) {
   const grade = gradeCategory(value);
   return gradeOrder.includes(grade) ? grade : "Autres";
-}
-
-function hexToRgb(hex: string) {
-  const value = hex.replace("#", "");
-  if (!/^[0-9a-f]{6}$/i.test(value)) return { r: 17, g: 84, b: 179 };
-  return {
-    r: parseInt(value.slice(0, 2), 16),
-    g: parseInt(value.slice(2, 4), 16),
-    b: parseInt(value.slice(4, 6), 16),
-  };
-}
-function rgbToHex(r: number, g: number, b: number) {
-  return `#${[r, g, b]
-    .map((value) =>
-      Math.max(0, Math.min(255, Math.round(value)))
-        .toString(16)
-        .padStart(2, "0"),
-    )
-    .join("")}`;
-}
-function mixColor(a: string, b: string, amount: number) {
-  const x = hexToRgb(a),
-    y = hexToRgb(b);
-  return rgbToHex(
-    x.r + (y.r - x.r) * amount,
-    x.g + (y.g - x.g) * amount,
-    x.b + (y.b - x.b) * amount,
-  );
-}
-function colorDistance(
-  a: { r: number; g: number; b: number },
-  b: { r: number; g: number; b: number },
-) {
-  return Math.hypot(a.r - b.r, a.g - b.g, a.b - b.b);
-}
-async function extractPalette(dataUrl: string) {
-  const image = new window.Image();
-  await new Promise<void>((resolve, reject) => {
-    image.onload = () => resolve();
-    image.onerror = () => reject(new Error("IMAGE_INVALIDE"));
-    image.src = dataUrl;
-  });
-  const canvas = document.createElement("canvas");
-  canvas.width = 72;
-  canvas.height = 72;
-  const ctx = canvas.getContext("2d");
-  if (!ctx) return [] as string[];
-  ctx.drawImage(image, 0, 0, 72, 72);
-  const data = ctx.getImageData(0, 0, 72, 72).data;
-  const buckets = new Map<
-    string,
-    { r: number; g: number; b: number; count: number }
-  >();
-  for (let index = 0; index < data.length; index += 4) {
-    if (data[index + 3] < 150) continue;
-    const r = data[index],
-      g = data[index + 1],
-      b = data[index + 2];
-    if (r > 245 && g > 245 && b > 245) continue;
-    if (r < 18 && g < 18 && b < 18) continue;
-    if (Math.max(r, g, b) - Math.min(r, g, b) < 22) continue;
-    const qr = Math.round(r / 32) * 32,
-      qg = Math.round(g / 32) * 32,
-      qb = Math.round(b / 32) * 32;
-    const key = `${qr}-${qg}-${qb}`;
-    const item = buckets.get(key) ?? { r: qr, g: qg, b: qb, count: 0 };
-    item.count += 1;
-    buckets.set(key, item);
-  }
-  const candidates = [...buckets.values()]
-    .sort((a, b) => b.count - a.count)
-    .slice(0, 18);
-  const picked: typeof candidates = [];
-  candidates.forEach((candidate) => {
-    if (
-      picked.length < 4 &&
-      picked.every((other) => colorDistance(candidate, other) > 72)
-    )
-      picked.push(candidate);
-  });
-  picked.sort((a, b) => a.r + a.g + a.b - (b.r + b.g + b.b));
-  return picked.map((color) => rgbToHex(color.r, color.g, color.b));
 }
 
 function loadCanvasImage(src: string) {
@@ -304,16 +224,7 @@ export function CourseStep({
           : selectedHeat.selected_classes,
       )
     : [];
-  const branding: ResultBranding = {
-    title: event.resultBranding?.title || event.name,
-    subtitle:
-      event.resultBranding?.subtitle ||
-      `${event.location || ""}${event.location ? " · " : ""}${event.year}`,
-    logoDataUrl: event.resultBranding?.logoDataUrl,
-    primaryColor: event.resultBranding?.primaryColor || "#1154b3",
-    secondaryColor: event.resultBranding?.secondaryColor || "#fed60b",
-    accentColor: event.resultBranding?.accentColor || "#173970",
-  };
+  const branding = resolveEventBranding(event);
 
   const refreshOwner = async () => {
     try {
@@ -648,63 +559,18 @@ export function CourseStep({
     }
   };
 
-  const updateBranding = (patch: Partial<ResultBranding>) =>
-    onChange({ ...event, resultBranding: { ...branding, ...patch } });
-  const uploadLogo = (file?: File) => {
-    if (!file) return;
-    const reader = new FileReader();
-    reader.onload = async () => {
-      const dataUrl = String(reader.result);
-      let palette: string[] = [];
-      try {
-        palette = await extractPalette(dataUrl);
-      } catch {
-        /* palette manuelle toujours disponible */
-      }
-      updateBranding({
-        logoDataUrl: dataUrl,
-        ...(palette[0] && !event.resultBranding?.primaryColor ? { primaryColor: palette[0] } : {}),
-        ...(palette[1] && !event.resultBranding?.secondaryColor ? { secondaryColor: palette[1] } : {}),
-        ...(palette[2] && !event.resultBranding?.accentColor ? { accentColor: palette[2] } : {}),
-      });
-      if (palette.length >= 2)
-        toast.success("Logo ajouté. Les couleurs déjà choisies sont conservées.");
-    };
-    reader.readAsDataURL(file);
-  };
 
   const printWindow = (title: string, body: string) => {
     const popup = window.open("", "_blank", "width=1000,height=800");
     if (!popup)
       return toast.error("Le navigateur a bloqué la fenêtre d’impression.");
-    const primary = branding.primaryColor || "#1154b3",
-      accent = branding.accentColor || "#173970";
-    popup.document.write(
-      `<!doctype html><html><head><meta charset="utf-8"><title>${esc(title)}</title><style>@page{margin:14mm}body{font-family:Arial,sans-serif;color:#102347}header{display:flex;align-items:center;gap:18px;border-bottom:5px solid ${esc(accent)};padding-bottom:14px;margin-bottom:24px}header img{max-width:105px;max-height:85px;object-fit:contain}h1{margin:0;color:${esc(primary)}}h2{margin-top:24px;color:${esc(primary)}}p{color:#64748b}table{width:100%;border-collapse:collapse;margin-top:14px}th,td{padding:8px;border-bottom:1px solid #dbe5f2;text-align:left}th{background:${esc(mixColor(primary, "#ffffff", 0.9))}}.podium{font-size:18px;font-weight:700}.note{padding:12px;border-radius:10px;background:${esc(mixColor(accent, "#ffffff", 0.9))};color:#334155}.footer{margin-top:30px;font-size:11px;color:#94a3b8}</style></head><body>${body}<div class="footer">Gestion Cross · Créé par L. RIGAUX</div></body></html>`,
-    );
+    popup.document.write(`<!doctype html><html lang="fr"><head><meta charset="utf-8"><title>${esc(title)}</title><style>${eventDocumentStyles(branding)}</style></head><body>${body}<div class="footer">Gestion Cross · Créé par L. RIGAUX</div></body></html>`);
     popup.document.close();
     popup.focus();
-    // Une temporisation fixe imprimait parfois avant que le logo ne soit chargé.
-    void Promise.all(
-      Array.from(popup.document.images).map((image) =>
-        image.complete
-          ? Promise.resolve()
-          : new Promise<void>((resolve) => {
-              image.addEventListener("load", () => resolve(), { once: true });
-              image.addEventListener("error", () => resolve(), { once: true });
-              window.setTimeout(resolve, 10000);
-            }),
-      ),
-    )
-      .then(() => popup.document.fonts.ready)
-      .then(() => {
-        if (!popup.closed) popup.print();
-      });
+    void waitForDocumentAssets(popup.document).then(() => { if (!popup.closed) popup.print(); });
   };
-  const documentHeader = () => {
-    const logo = branding.logoDataUrl;
-    return `<header>${logo ? `<img src="${esc(logo)}" alt="Logo de l’événement">` : ""}<div><h1>${esc(branding.title || event.name)}</h1><p>${esc(branding.subtitle || "")}</p></div></header>`;
-  };
+  const documentHeader = () => eventDocumentHeader(branding);
+
   const printIndividual = () => {
     if (!selectedHeat) return;
     const sections = selectedGroups
@@ -1749,133 +1615,7 @@ export function CourseStep({
         </DialogContent>
       </Dialog>
 
-      <Dialog open={brandingOpen} onOpenChange={setBrandingOpen}>
-        <DialogContent className="max-h-[calc(100dvh-2rem)] overflow-y-auto sm:max-w-2xl">
-          <DialogHeader>
-            <DialogTitle>En-tête & identité visuelle</DialogTitle>
-            <DialogDescription>
-              Cette identité est utilisée sur les PDF de résultats, les posts,
-              les stories et dans l’en-tête du cross.
-            </DialogDescription>
-          </DialogHeader>
-          <div className="grid gap-5 sm:grid-cols-2">
-            <div className="sm:col-span-2">
-              <Label>Titre affiché</Label>
-              <Input
-                value={branding.title}
-                onChange={(event) =>
-                  updateBranding({ title: event.target.value })
-                }
-              />
-            </div>
-            <div className="sm:col-span-2">
-              <Label>Sous-titre</Label>
-              <Input
-                value={branding.subtitle}
-                onChange={(event) =>
-                  updateBranding({ subtitle: event.target.value })
-                }
-                placeholder="Ex. Saint-Lô · 2026"
-              />
-            </div>
-            <div className="sm:col-span-2">
-              <Label>Logo de la course</Label>
-              <Input
-                type="file"
-                accept="image/png,image/jpeg,image/webp"
-                onChange={(event) => uploadLogo(event.target.files?.[0])}
-              />
-              <p className="mt-1 text-xs text-slate-500">
-                Ce logo sera utilisé sur les publications, les stories et les feuilles imprimées. Les couleurs déjà choisies sont conservées ; les couleurs non définies sont détectées à l’import. Vous pouvez ensuite les ajuster.
-              </p>
-            </div>
-            {branding.logoDataUrl && (
-              <div className="sm:col-span-2 flex justify-center rounded-2xl bg-slate-50 p-4">
-                <Image
-                  src={branding.logoDataUrl}
-                  alt="Logo de la course"
-                  width={240}
-                  height={176}
-                  unoptimized
-                  className="max-h-44 max-w-full object-contain"
-                />
-              </div>
-            )}
-            <div>
-              <Label>Couleur principale</Label>
-              <div className="mt-1 flex gap-2">
-                <Input
-                  type="color"
-                  value={branding.primaryColor}
-                  onChange={(event) =>
-                    updateBranding({ primaryColor: event.target.value })
-                  }
-                  className="h-11 w-16 p-1"
-                />
-                <Input
-                  value={branding.primaryColor}
-                  onChange={(event) =>
-                    updateBranding({ primaryColor: event.target.value })
-                  }
-                />
-              </div>
-            </div>
-            <div>
-              <Label>Couleur secondaire</Label>
-              <div className="mt-1 flex gap-2">
-                <Input
-                  type="color"
-                  value={branding.secondaryColor}
-                  onChange={(event) =>
-                    updateBranding({ secondaryColor: event.target.value })
-                  }
-                  className="h-11 w-16 p-1"
-                />
-                <Input
-                  value={branding.secondaryColor}
-                  onChange={(event) =>
-                    updateBranding({ secondaryColor: event.target.value })
-                  }
-                />
-              </div>
-            </div>
-            <div>
-              <Label>Couleur d’accent</Label>
-              <div className="mt-1 flex gap-2">
-                <Input
-                  type="color"
-                  value={branding.accentColor}
-                  onChange={(event) =>
-                    updateBranding({ accentColor: event.target.value })
-                  }
-                  className="h-11 w-16 p-1"
-                />
-                <Input
-                  value={branding.accentColor}
-                  onChange={(event) =>
-                    updateBranding({ accentColor: event.target.value })
-                  }
-                />
-              </div>
-            </div>
-            <div
-              className="rounded-2xl p-4 text-white"
-              style={{
-                background: `linear-gradient(135deg, ${branding.primaryColor}, ${branding.accentColor})`,
-              }}
-            >
-              <p className="font-bold">Aperçu des couleurs</p>
-              <p className="text-sm text-white/80">
-                Les exports reprendront cette palette.
-              </p>
-            </div>
-          </div>
-          <DialogFooter>
-            <Button onClick={() => setBrandingOpen(false)}>Terminer</Button>
-          </DialogFooter>
-        </DialogContent>
-      </Dialog>
-
+      <EventBrandingDialog event={event} onChange={onChange} open={brandingOpen} onOpenChange={setBrandingOpen} />
       <Dialog
         open={statusOpen}
         onOpenChange={(open) => {

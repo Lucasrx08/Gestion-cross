@@ -1,3 +1,4 @@
+import { resolveEventBranding, eventDocumentHeader } from "../lib/dossard/event-branding";
 import assert from "node:assert/strict";
 import * as XLSX from "xlsx";
 import { createRaceEvent } from "../lib/dossard/defaults";
@@ -345,6 +346,17 @@ test("Liste de secours : classe, nom, prénom, numéro et code complet ; texte H
   assert(html.includes("CROSS-0007") && html.includes("Éloïse") && html.includes("&lt;SCRIPT&gt;"));
   assert(!html.includes("<script>"));
   assert(html.includes("Cross &amp; école"));
+});
+test("Identité commune : titre, logo et couleurs repris sur chaque page de liste", () => {
+  const brand = resolveEventBranding({...event, resultBranding: {title:"Rose & Run", subtitle:"Saint-Lô", primaryColor:"#bf1281", secondaryColor:"#f198a5", logoDataUrl:"data:image/png;base64,TEST"}});
+  const people = Array.from({length:49}, (_,i) => ({...event.participants[0], id:String(i), bibNumber:i+1, technicalId:String(i+1).padStart(3,"0"), className:"6e A"}));
+  const html = rosterPrintDocument(event.name, people, brand);
+  assert.equal((html.match(/class="roster-page"/g) || []).length, 3);
+  assert.equal((html.match(/alt="Logo de l’événement"/g) || []).length, 3);
+  assert(html.includes("Rose &amp; Run") && html.includes("#bf1281") && html.includes("#f198a5"));
+  assert.equal((html.match(/class="code"/g) || []).length, 49);
+  assert(!eventDocumentHeader({title:"Sans logo"}).includes("<img"));
+  assert.equal(resolveEventBranding({...event, resultBranding:{primaryColor:"red;bad"}}).primaryColor,"#1154b3");
 });
 test("Challenge filtré : variantes 6ème/6e regroupées, points et effectifs filles/garçons conservés", () => {
   const data = [{ heat: { ...heat, challenge_enabled: true, challenge_classes: [], selected_classes: [] }, entries }];

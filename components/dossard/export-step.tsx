@@ -20,6 +20,7 @@ import {
 } from "@/lib/dossard/exports";
 import type { ExportFilter, ExportMode, PdfProgress, RaceEvent } from "@/lib/dossard/types";
 import { isEventReady } from "@/lib/dossard/validation";
+import { resolveEventBranding, waitForDocumentAssets } from "@/lib/dossard/event-branding";
 import { rosterPrintDocument } from "@/lib/dossard/participant-roster";
 
 const options: Array<{ value: ExportMode; title: string; description: string }> = [
@@ -102,9 +103,9 @@ export function ExportStep({ event, selectedIds, initialSingleId }: ExportStepPr
   const printRoster = () => {
     const popup = window.open("", "_blank");
     if (!popup) return toast.error("Autorisez les fenêtres d’impression dans votre navigateur.");
-    popup.document.write(rosterPrintDocument(event.name, event.participants));
+    popup.document.write(rosterPrintDocument(event.name, event.participants, resolveEventBranding(event)));
     popup.document.close();
-    void popup.document.fonts.ready.then(() => {
+    void waitForDocumentAssets(popup.document).then(() => {
       if (!popup.closed) { popup.focus(); popup.print(); }
     });
   };
