@@ -1,3 +1,4 @@
+import { arrangeBibSheets, sortBibParticipants } from "../lib/dossard/print-order";
 import { resolveEventBranding, eventDocumentHeader } from "../lib/dossard/event-branding";
 import assert from "node:assert/strict";
 import * as XLSX from "xlsx";
@@ -188,6 +189,12 @@ const backup = {
 };
 test("Sauvegarde v1 conservée : modèles et élèves valides", () =>
   assert.equal(parseCrossBackup(backup).events[0].participants.length, 7));
+test("Pochettes : regroupement, texte et position conservés à la restauration", () => {
+  const pockets=[{id:"pochette",classes:["CP A","CE1 B"],text:"Mme Dupont",x:20,y:70,fontSize:18}];
+  const restored=parseCrossBackup({...backup,events:[{...event,classPockets:pockets}]});
+  assert.deepEqual(restored.events[0].classPockets,pockets);
+  assert.deepEqual(restored.events[0].participants,event.participants);
+});
 test("Sauvegarde invalide/refusée : clé, géométrie et IDs dupliqués", () => {
   assert.throws(() => parseCrossBackup({ ...backup, ownerKey: "wrong" }));
   const bad = structuredClone(backup);
@@ -347,12 +354,42 @@ test("Liste de secours : classe, nom, prénom, numéro et code complet ; texte H
   assert(!html.includes("<script>"));
   assert(html.includes("Cross &amp; école"));
 });
+test("Découpe en pile : ordre restauré pour 4, 5, 6 et 700 dossards", () => {
+  for (const count of [1,4,5,6,700]) {
+    const people = Array.from({length:count},(_,i) => ({...event.participants[0],id:String(i),bibNumber:i+1}));
+    const arranged = arrangeBibSheets(people,true);
+    const upper = arranged.filter((p,i) => i%2 === 0 && p);
+    const lower = arranged.filter((p,i) => i%2 === 1 && p);
+    assert.deepEqual([...upper,...lower].map(p=>p!.id),people.map(p=>p!.id));
+    assert.equal(new Set(arranged.filter(Boolean).map(p=>p!.id)).size,count);
+    if(count===4) assert.deepEqual(arranged.filter(Boolean).map(p=>p!.bibNumber),[1,3,2,4]);
+    assert.deepEqual(arrangeBibSheets(people,false),people);
+  }
+});
+test("Piles séparées : 25 et 26 élèves, aucune classe mélangée ni dossard perdu", () => {
+  const people = Array.from({length:51},(_,i)=>({...event.participants[0],id:String(i),bibNumber:i+1,className:i<25?"CP A":"CE1 B"}));
+  const slots=arrangeBibSheets(people,true,true);
+  assert.equal(slots.length,52);assert.equal(slots[25],null);
+  for(const [start,count] of [[0,25],[26,26]]) {
+    const pile=slots.slice(start,start+26);
+    const assembled=[...pile.filter((p,i)=>p&&i%2===0),...pile.filter((p,i)=>p&&i%2===1)];
+    assert.deepEqual(assembled.map(p=>p!.id),people.slice(start===0?0:25,start===0?25:51).map(p=>p.id));
+    assert.equal(assembled.length,count);
+  }
+});
+test("Tri d’impression : classe/nom/prénom ou nom global, sans renumérotation", () => {
+  const people = [{...event.participants[0],bibNumber:3,className:"6e B",lastName:"Albert",firstName:"Léa"},{...event.participants[0],bibNumber:2,className:"6e A",lastName:"Zulu",firstName:"Léo"},{...event.participants[0],bibNumber:1,className:"6e A",lastName:"Albert",firstName:"Zoé"}];
+  assert.deepEqual(sortBibParticipants(people,"class-name").map(p=>p.bibNumber),[1,2,3]);
+  assert.deepEqual(sortBibParticipants(people,"name").map(p=>p.bibNumber),[3,1,2]);
+  assert.deepEqual(sortBibParticipants(people,"number").map(p=>p.bibNumber),[1,2,3]);
+  assert.deepEqual(people.map(p=>p.bibNumber),[3,2,1]);
+});
 test("Identité commune : titre, logo et couleurs repris sur chaque page de liste", () => {
   const brand = resolveEventBranding({...event, resultBranding: {title:"Rose & Run", subtitle:"Saint-Lô", primaryColor:"#bf1281", secondaryColor:"#f198a5", logoDataUrl:"data:image/png;base64,TEST"}});
   const people = Array.from({length:49}, (_,i) => ({...event.participants[0], id:String(i), bibNumber:i+1, technicalId:String(i+1).padStart(3,"0"), className:"6e A"}));
   const html = rosterPrintDocument(event.name, people, brand);
-  assert.equal((html.match(/class="roster-page"/g) || []).length, 3);
-  assert.equal((html.match(/alt="Logo de l’événement"/g) || []).length, 3);
+  assert.equal((html.match(/class="roster-page"/g) || []).length, 2);
+  assert.equal((html.match(/alt="Logo de l’événement"/g) || []).length, 2);
   assert(html.includes("Rose &amp; Run") && html.includes("#bf1281") && html.includes("#f198a5"));
   assert.equal((html.match(/class="code"/g) || []).length, 49);
   assert(!eventDocumentHeader({title:"Sans logo"}).includes("<img"));

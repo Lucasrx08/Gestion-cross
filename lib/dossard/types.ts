@@ -94,6 +94,7 @@ export interface RaceEvent {
   sourceFileName?: string;
   resultBranding?: ResultBranding;
   raceArchive?: RaceArchive;
+  classPockets?: import("./print-documents").ClassPocket[];
   createdAt: string;
   updatedAt: string;
 }

@@ -424,6 +424,7 @@ export function EventWorkspace({
               key={singleId ?? "general"}
               event={event}
               selectedIds={selectedIds}
+              onChange={onChange}
               initialSingleId={singleId}
             />
           </TabsContent>

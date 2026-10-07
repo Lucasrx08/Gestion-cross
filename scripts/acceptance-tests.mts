@@ -1,12 +1,14 @@
 import assert from "node:assert/strict";
 import { File } from "node:buffer";
-import { readFile } from "node:fs/promises";
+import { readFile, mkdir, writeFile } from "node:fs/promises";
 import * as XLSX from "xlsx";
 import { PDFDocument } from "pdf-lib";
 import { createRaceEvent } from "../lib/dossard/defaults";
 import { barcodeGeometry, verifyCode128 } from "../lib/dossard/barcode";
 import { importParticipants, mappingIsValid, readParticipantFile } from "../lib/dossard/import";
 import { createLocalId, normalizeScannedIdentifier, technicalId } from "../lib/dossard/identifiers";
+import { generateEventDocumentPdf, generatePocketPdf, rosterSections, pocketPosition } from "../lib/dossard/print-documents";
+import { arrangeBibSheets, sortBibParticipants } from "../lib/dossard/print-order";
 import { generateBibPdf } from "../lib/dossard/pdf";
 import { validateParticipants } from "../lib/dossard/validation";
 import type { BackgroundAsset, Participant } from "../lib/dossard/types";
@@ -78,3 +80,32 @@ const jpeg: BackgroundAsset = { fileName: "fond-test.jpg", mimeType: "image/jpeg
 await pdfTest(10, png); await pdfTest(10, jpeg);
 for (const count of [100, 800, 1500]) await pdfTest(count);
 console.log("✓ critères d’acceptation principaux validés");
+
+async function printDocumentTests() {
+  const event = createRaceEvent({name:"ROSE RUN · ESSAI FICTIF",year:2026,location:"Saint-Lô"});
+  event.participants = participants(51).map((p,i)=>({...p,className:i<25?"CP A":"CE1 B"}));
+  event.resultBranding={title:event.name,primaryColor:"#bf1281",secondaryColor:"#f198a5",logoDataUrl:png.dataUrl};
+  const list=await generateEventDocumentPdf(event,rosterSections(event));
+  assert.equal((await PDFDocument.load(list)).getPageCount(),2);
+  for (const count of [26,30,31,700]) {
+    const sameClass={...event,participants:participants(count).map(p=>({...p,className:"6e A"}))};
+    const bytes=await generateEventDocumentPdf(sameClass,rosterSections(sameClass));
+    assert.equal((await PDFDocument.load(bytes)).getPageCount(),Math.ceil(count/30));
+  }
+  const pockets=[{id:"test",classes:["CP A","CE1 B"],text:"Mme Dupont · Distribution des dossards",x:12,y:70,fontSize:18}];
+  const pocket=await generatePocketPdf(event,pockets);
+  const pocketDoc=await PDFDocument.load(pocket);
+  assert.equal(pocketDoc.getPageCount(),1);
+  assert(Math.abs(pocketDoc.getPage(0).getWidth()-297*72/25.4)<.02);
+  assert.deepEqual(pocketPosition(-10,100),{x:5,y:85});
+  const bibs=await generateBibPdf(event,arrangeBibSheets(sortBibParticipants(event.participants,"class-name"),true,true));
+  assert.equal(bibs.a4PageCount,26);
+  const backup=await generateEventDocumentPdf(event,[{title:"Course CP / CE1 · Feuille de secours",columns:["Ordre d’arrivée","Numéro de dossard"],rows:Array.from({length:30},()=>["",""])}]);
+  assert.equal((await PDFDocument.load(backup)).getPageCount(),1);
+  if(process.env.QA_PRINT_OUTPUT) {
+    await mkdir(process.env.QA_PRINT_OUTPUT,{recursive:true});
+    for(const [name,bytes] of [["liste-classes.pdf",list],["pochette-classes.pdf",pocket],["dossards-piles.pdf",bibs.bytes],["feuille-secours.pdf",backup]] as const)await writeFile(`${process.env.QA_PRINT_OUTPUT}/${name}`,bytes);
+  }
+  console.log("✓ Listes 25/26/30/31/700 élèves, pochettes paysage et piles séparées avec emplacement vide");
+}
+await printDocumentTests();

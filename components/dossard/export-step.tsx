@@ -20,11 +20,11 @@ import {
 } from "@/lib/dossard/exports";
 import type { ExportFilter, ExportMode, PdfProgress, RaceEvent } from "@/lib/dossard/types";
 import { isEventReady } from "@/lib/dossard/validation";
-import { resolveEventBranding, waitForDocumentAssets } from "@/lib/dossard/event-branding";
-import { rosterPrintDocument } from "@/lib/dossard/participant-roster";
+import { arrangeBibSheets, sortBibParticipants, type BibPrintSort } from "@/lib/dossard/print-order";
+import { PocketEditor } from "./pocket-editor";
 
 const options: Array<{ value: ExportMode; title: string; description: string }> = [
-  { value: "all", title: "Tous les dossards", description: "PDF complet par numéro" },
+  { value: "all", title: "Tous les dossards", description: "PDF complet" },
   { value: "class", title: "Par classe", description: "Une classe choisie" },
   { value: "range", title: "Du dossard X au Y", description: "Une plage de numéros" },
   { value: "selection", title: "Ma sélection", description: "Les lignes cochées" },
@@ -33,11 +33,12 @@ const options: Array<{ value: ExportMode; title: string; description: string }> 
 
 interface ExportStepProps {
   event: RaceEvent;
+  onChange: (event: RaceEvent) => void;
   selectedIds: Set<string>;
   initialSingleId?: string;
 }
 
-export function ExportStep({ event, selectedIds, initialSingleId }: ExportStepProps) {
+export function ExportStep({ event, onChange, selectedIds, initialSingleId }: ExportStepProps) {
   const classes = useMemo(
     () => [...new Set(event.participants.map((participant) => participant.className).filter(Boolean))].sort((a, b) => a.localeCompare(b, "fr")),
     [event.participants],
@@ -48,6 +49,8 @@ export function ExportStep({ event, selectedIds, initialSingleId }: ExportStepPr
   const [to, setTo] = useState(event.participants.at(-1)?.bibNumber ?? event.numbering.start);
   const [singleId, setSingleId] = useState(initialSingleId ?? "");
   const [search, setSearch] = useState("");
+  const [printSort, setPrintSort] = useState<BibPrintSort>("class-name");
+  const [cutAndStack, setCutAndStack] = useState(true);
   const [progress, setProgress] = useState<PdfProgress>();
   const [generating, setGenerating] = useState(false);
   const [reduced, setReduced] = useState<number>();
@@ -60,8 +63,9 @@ export function ExportStep({ event, selectedIds, initialSingleId }: ExportStepPr
     participantIds: [...selectedIds],
     participantId: singleId,
   };
-  const selected = selectParticipants(event.participants, filter);
-  const a4Pages = Math.ceil(selected.length / 2);
+  const selected = sortBibParticipants(selectParticipants(event.participants, filter), printSort);
+  const printSlots = arrangeBibSheets(selected, cutAndStack, printSort === "class-name");
+  const a4Pages = Math.ceil(printSlots.length / 2);
   const results = useMemo(() => {
     const query = search.trim().toLocaleLowerCase("fr");
     if (!query) return [];
@@ -82,7 +86,7 @@ export function ExportStep({ event, selectedIds, initialSingleId }: ExportStepPr
     setReduced(undefined);
     try {
       const { generateBibPdf } = await import("@/lib/dossard/pdf");
-      const result = await generateBibPdf(event, selected, setProgress);
+      const result = await generateBibPdf(event, printSlots, setProgress);
       const buffer = result.bytes.buffer.slice(
         result.bytes.byteOffset,
         result.bytes.byteOffset + result.bytes.byteLength,
@@ -100,14 +104,17 @@ export function ExportStep({ event, selectedIds, initialSingleId }: ExportStepPr
     }
   };
 
-  const printRoster = () => {
-    const popup = window.open("", "_blank");
-    if (!popup) return toast.error("Autorisez les fenêtres d’impression dans votre navigateur.");
-    popup.document.write(rosterPrintDocument(event.name, event.participants, resolveEventBranding(event)));
-    popup.document.close();
-    void waitForDocumentAssets(popup.document).then(() => {
-      if (!popup.closed) { popup.focus(); popup.print(); }
-    });
+  const [rosterBusy, setRosterBusy] = useState(false);
+  const printRoster = async () => {
+    if(rosterBusy)return;
+    setRosterBusy(true);
+    try {
+      const { generateEventDocumentPdf, rosterSections } = await import("@/lib/dossard/print-documents");
+      const bytes = await generateEventDocumentPdf(event, rosterSections(event));
+      downloadBlob(new Blob([new Uint8Array(bytes)], {type:"application/pdf"}), `${safeFileName(event.name)}-liste-dossards-par-classe.pdf`);
+      toast.success("Liste PDF prête : 30 élèves par page, sans URL, date ou numéro de page ajoutés.");
+    } catch(error) { toast.error(error instanceof Error ? error.message : "Création de la liste impossible."); }
+    finally { setRosterBusy(false); }
   };
 
   return (
@@ -116,10 +123,11 @@ export function ExportStep({ event, selectedIds, initialSingleId }: ExportStepPr
       <section className="cross-panel flex flex-wrap items-center gap-4 p-5">
         <div className="min-w-0 flex-1">
           <h2 className="font-bold">Liste de secours par classe</h2>
-          <p className="text-sm text-slate-500">Tous les élèves, classés par classe puis par nom : nom, prénom et dossard associé. À garder au poste de scan en cas de dossard perdu.</p>
+          <p className="text-sm text-slate-500">Tous les élèves, classés par classe puis par nom : nom, prénom et dossard associé. 30 élèves par page : une classe de 25 ou 26 élèves tient sur une feuille. À garder au poste de scan en cas de dossard perdu.</p>
         </div>
-        <Button variant="outline" disabled={!event.participants.length} onClick={printRoster}><Printer />Imprimer la liste / PDF</Button>
+        <Button variant="outline" disabled={!event.participants.length || rosterBusy} onClick={()=>void printRoster()}><Printer />{rosterBusy ? "Création…" : "Liste par classe · PDF / impression"}</Button>
       </section>
+      <PocketEditor event={event} onChange={onChange} classes={classes} />
       {!ready && (
         <section className="flex gap-3 rounded-2xl border border-red-200 bg-red-50 p-4 text-red-800">
           <ShieldAlert />
@@ -201,7 +209,17 @@ export function ExportStep({ event, selectedIds, initialSingleId }: ExportStepPr
                 )}
               </div>
             )}
-            {mode === "all" && <p className="text-sm text-slate-600">Tri par numéro croissant.</p>}
+            {mode !== "single" && <div className="space-y-4">
+              <div><Label htmlFor="bib-print-sort">Ordre des dossards après découpe</Label><Select value={printSort} onValueChange={value => setPrintSort(value as BibPrintSort)} disabled={generating}><SelectTrigger id="bib-print-sort" className="mt-2 w-full bg-white"><SelectValue /></SelectTrigger><SelectContent><SelectItem value="class-name">Par classe, puis nom et prénom</SelectItem><SelectItem value="name">Par nom et prénom, toutes classes confondues</SelectItem><SelectItem value="number">Par numéro de dossard</SelectItem></SelectContent></Select></div>
+              <div><Label htmlFor="bib-print-assembly">Disposition sur les feuilles A4</Label><Select value={cutAndStack ? "cut-stack" : "sequential"} onValueChange={value => setCutAndStack(value === "cut-stack")} disabled={generating}><SelectTrigger id="bib-print-assembly" className="mt-2 w-full bg-white"><SelectValue /></SelectTrigger><SelectContent><SelectItem value="cut-stack">Couper la pile puis superposer</SelectItem><SelectItem value="sequential">Deux dossards consécutifs par feuille</SelectItem></SelectContent></Select></div>
+              <p className="text-sm text-slate-600">{cutAndStack ? "Gardez les feuilles dans l’ordre du PDF. Prenez séparément la pile de chaque classe si vous avez choisi le tri par classe. Coupez la pile au milieu, puis placez la pile du haut sur celle du bas : les dossards seront déjà triés." : "Sur chaque feuille, les deux dossards se suivent dans l’ordre choisi."} Les numéros des élèves restent inchangés.</p>
+              {selected.length > 0 && <div className="rounded-lg border bg-white p-3"><p className="mb-2 text-xs font-semibold uppercase text-slate-500">Premières feuilles · haut / bas</p>{Array.from({length:Math.min(a4Pages,3)},(_,page) => {
+                const top = printSlots[page * 2];
+                const bottom = printSlots[page * 2 + 1];
+                const caption = (p: typeof top | undefined) => p ? `${String(p.bibNumber).padStart(event.numbering.digits,"0")} · ${p.lastName} ${p.firstName}` : "Emplacement vide";
+                return <div key={page} className="border-t py-2 text-sm first:border-t-0"><b>Feuille {page+1}</b><p>Haut : {caption(top)}</p><p>Bas : {caption(bottom)}</p></div>;
+              })}</div>}
+            </div>}
           </div>
         </div>
 

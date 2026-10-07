@@ -133,6 +133,10 @@ const event = z.object({
       accentColor: text.optional(),
     })
     .optional(),
+  classPockets: z.array(z.object({
+    id: text.min(1), classes: z.array(text), text: text.max(240),
+    x: finite.min(5).max(75), y: finite.min(5).max(85), fontSize: finite.min(10).max(30),
+  })).optional(),
   createdAt: text,
   updatedAt: text,
 });

@@ -45,6 +45,7 @@ import {
   SelectTrigger,
   SelectValue,
 } from "@/components/ui/select";
+import { downloadBlob, safeFileName } from "@/lib/dossard/exports";
 import type { RaceEvent } from "@/lib/dossard/types";
 import {
   type CloudEvent,
@@ -71,7 +72,7 @@ import { exportRaceResults, overallChallenge } from "@/lib/dossard/race-results"
 import { CourseProgramme } from "./course-programme";
 import { GradeResults } from "./grade-results";
 import { EventBrandingDialog } from "./event-branding-dialog";
-import { resolveEventBranding, eventDocumentHeader, eventDocumentStyles, waitForDocumentAssets } from "@/lib/dossard/event-branding";
+import { resolveEventBranding, eventDocumentHeader } from "@/lib/dossard/event-branding";
 import { drawSocialResults } from "@/lib/dossard/social-results";
 
 interface OwnerState {
@@ -560,14 +561,19 @@ export function CourseStep({
   };
 
 
+  const [printingDocument, setPrintingDocument] = useState(false);
   const printWindow = (title: string, body: string) => {
-    const popup = window.open("", "_blank", "width=1000,height=800");
-    if (!popup)
-      return toast.error("Le navigateur a bloqué la fenêtre d’impression.");
-    popup.document.write(`<!doctype html><html lang="fr"><head><meta charset="utf-8"><title>${esc(title)}</title><style>${eventDocumentStyles(branding)}</style></head><body>${body}<div class="footer">Gestion Cross · Créé par L. RIGAUX</div></body></html>`);
-    popup.document.close();
-    popup.focus();
-    void waitForDocumentAssets(popup.document).then(() => { if (!popup.closed) popup.print(); });
+    if (printingDocument) return;
+    setPrintingDocument(true);
+    void (async () => {
+      try {
+        const { generateEventDocumentPdf, sectionsFromPrintHtml } = await import("@/lib/dossard/print-documents");
+        const bytes = await generateEventDocumentPdf(event, sectionsFromPrintHtml(body));
+        downloadBlob(new Blob([new Uint8Array(bytes)], {type:"application/pdf"}), `${safeFileName(title)}.pdf`);
+        toast.success("PDF prêt pour l’impression, sans en-tête ou pied de page du navigateur.");
+      } catch(error) { toast.error(error instanceof Error ? error.message : "Impression impossible."); }
+      finally { setPrintingDocument(false); }
+    })();
   };
   const documentHeader = () => eventDocumentHeader(branding);
 
