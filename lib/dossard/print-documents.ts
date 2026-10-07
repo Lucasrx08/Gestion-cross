@@ -1,5 +1,6 @@
 import fontkit from "@pdf-lib/fontkit";
 import { PDFDocument, rgb, type PDFFont, type PDFPage, type PDFImage } from "pdf-lib";
+import { pocketCover } from "./pocket-cover";
 import { publicAsset } from "./assets";
 import { resolveEventBranding } from "./event-branding";
 import { participantRoster } from "./participant-roster";
@@ -86,18 +87,29 @@ export async function generateEventDocumentPdf(event: RaceEvent, sections: Print
   }
   return doc.save();
 }
+function centeredCoverText(page: PDFPage, font: PDFFont, text: string, center: number, top: number, width: number, preferred: number, fill: ReturnType<typeof rgb>, maxLines: number) {
+  let size=preferred;
+  while(lines(font,text,size,width).length>maxLines && size>8)size-=.5;
+  const wrapped=lines(font,text,size,width);
+  wrapped.forEach((line,i)=>page.drawText(line,{x:center-font.widthOfTextAtSize(line,size)/2,y:top-size-i*size*1.3,size,font,color:fill}));
+}
 export async function generatePocketPdf(event: RaceEvent, pockets: ClassPocket[]) {
   if(!pockets.length)throw new Error("Choisissez au moins une classe.");
   const {doc,bold,b,logo}=await prepare(event);const primary=ink(b.primaryColor!),secondary=ink(b.secondaryColor!);
+  const layout=pocketCover;
   for(const pocket of pockets) {
-    const page=doc.addPage([mm(297),mm(210)]),left=mm(12),faceWidth=mm(124.5);
-    page.drawLine({start:{x:mm(148.5),y:mm(5)},end:{x:mm(148.5),y:mm(205)},thickness:.6,color:rgb(.7,.7,.7),dashArray:[3,3]});
-    if(logo){const scale=Math.min(mm(38)/logo.width,mm(30)/logo.height);const w=logo.width*scale;page.drawImage(logo,{x:mm(74.25)-w/2,y:mm(164),width:w,height:logo.height*scale});}
-    drawLines(page,bold,b.title||event.name,left,mm(151),faceWidth,22,primary,2);
-    page.drawLine({start:{x:left,y:mm(122)},end:{x:left+faceWidth,y:mm(122)},thickness:2,color:secondary});
-    drawLines(page,bold,pocket.classes.join(" · "),left,mm(115),faceWidth,18,primary,4);
-    const position=pocketPosition(pocket.x,pocket.y),x=mm(148.5*position.x/100),top=mm(210*(1-position.y/100));
-    drawLines(page,bold,pocket.text,x,top,mm(143.5)-x,Math.max(10,Math.min(30,pocket.fontSize)),primary,4);
+    const page=doc.addPage([mm(297),mm(210)]),center=mm(layout.centerX);
+    page.drawLine({start:{x:mm(layout.foldX),y:mm(5)},end:{x:mm(layout.foldX),y:mm(205)},thickness:.5,color:rgb(.78,.8,.82),dashArray:[3,3]});
+    page.drawRectangle({x:mm(layout.frame.x),y:mm(layout.frame.y),width:mm(layout.frame.width),height:mm(layout.frame.height),borderColor:secondary,borderWidth:.8});
+    page.drawRectangle({x:center-mm(12),y:mm(196),width:mm(24),height:mm(2),color:primary});
+    if(logo){const scale=Math.min(mm(layout.logo.width)/logo.width,mm(layout.logo.height)/logo.height),w=logo.width*scale,h=logo.height*scale;page.drawImage(logo,{x:center-w/2,y:mm(layout.logo.top-layout.logo.height/2)-h/2,width:w,height:h});}
+    centeredCoverText(page,bold,b.title||event.name,center,mm(layout.title.top),mm(layout.title.width),layout.title.fontSize,primary,2);
+    page.drawLine({start:{x:center-mm(21),y:mm(layout.dividerY)},end:{x:center+mm(21),y:mm(layout.dividerY)},thickness:2,color:secondary});
+    const label=pocket.classes.length>1?"CLASSES ASSOCIÉES":"CLASSE";
+    centeredCoverText(page,bold,label,center,mm(layout.labelY),mm(100),8,rgb(.4,.44,.5),1);
+    centeredCoverText(page,bold,pocket.classes.join(" · "),center,mm(layout.classes.top),mm(layout.classes.width),layout.classes.fontSize,primary,3);
+    const position=pocketPosition(pocket.x,pocket.y),localX=mm(148.5*position.x/100),top=mm(210*(1-position.y/100));
+    drawLines(page,bold,pocket.text,mm(layout.foldX)+localX,top,mm(143.5)-localX,Math.max(10,Math.min(30,pocket.fontSize)),primary,4);
   }
   return doc.save();
 }

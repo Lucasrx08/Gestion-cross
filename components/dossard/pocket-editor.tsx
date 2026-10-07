@@ -1,6 +1,5 @@
 "use client";
-import Image from "next/image";
-import { useState } from "react";
+import { useRef, useState } from "react";
 import { Download, Plus, Trash2, Move } from "lucide-react";
 import { toast } from "sonner";
 import { Button } from "@/components/ui/button";
@@ -9,10 +8,12 @@ import { Label } from "@/components/ui/label";
 import { resolveEventBranding } from "@/lib/dossard/event-branding";
 import { downloadBlob, safeFileName } from "@/lib/dossard/exports";
 import type { RaceEvent } from "@/lib/dossard/types";
+import { coverTitleLines, pocketCover, pocketDragPosition } from "@/lib/dossard/pocket-cover";
 import type { ClassPocket } from "@/lib/dossard/print-documents";
 
 export function PocketEditor({event,onChange,classes}:{event:RaceEvent;onChange:(event:RaceEvent)=>void;classes:string[]}) {
   const [activeId,setActiveId]=useState("");const [busy,setBusy]=useState(false);
+  const dragStart=useRef<{x:number;y:number;clientX:number;clientY:number} | undefined>(undefined);
   const pockets=event.classPockets??[];
   const active=pockets.find(p=>p.id===activeId)??pockets[0];const branding=resolveEventBranding(event);
   const save=(next:ClassPocket[])=>onChange({...event,classPockets:next});
@@ -36,20 +37,24 @@ export function PocketEditor({event,onChange,classes}:{event:RaceEvent;onChange:
         <Button variant="outline" onClick={()=>save(pockets.filter(p=>p.id!==active.id))}><Trash2/>Supprimer cette pochette</Button>
       </div>
       <div>
-        <div className="relative aspect-[297/210] overflow-hidden rounded-lg border bg-white shadow-sm" aria-label="Aperçu de la pochette A4 paysage">
-          <div className="absolute inset-y-0 left-1/2 border-l border-dashed border-slate-300"/>
-          <div className="absolute left-[4%] top-[7%] w-[42%] text-center">
-            {branding.logoDataUrl&&<Image unoptimized width={160} height={80} src={branding.logoDataUrl} alt="Logo de l’événement" className="mx-auto mb-3 h-14 max-w-full object-contain"/>}
-            <p className="text-base font-black sm:text-lg" style={{color:branding.primaryColor}}>{branding.title}</p>
-            <div className="my-3 border-b-2" style={{borderColor:branding.secondaryColor}}/>
-            <p className="text-sm font-bold" style={{color:branding.primaryColor}}>{active.classes.join(" · ")||"Classes à choisir"}</p>
-          </div>
-          <button type="button" aria-label="Déplacer le texte libre" className="absolute cursor-move touch-none rounded border border-dashed border-slate-400 p-1 text-left" style={{left:`${active.x/2}%`,top:`${active.y}%`,maxWidth:`${48-active.x/2}%`,color:branding.primaryColor,fontSize:`${active.fontSize/2}px`}}
-            onPointerDown={e=>{e.currentTarget.setPointerCapture(e.pointerId);}}
-            onPointerMove={e=>{if(!e.currentTarget.hasPointerCapture(e.pointerId))return;const r=e.currentTarget.parentElement!.getBoundingClientRect();update({x:Math.round(Math.max(5,Math.min(75,(e.clientX-r.left)/r.width*200))),y:Math.round(Math.max(5,Math.min(85,(e.clientY-r.top)/r.height*100)))});}}
-            onPointerUp={e=>{if(e.currentTarget.hasPointerCapture(e.pointerId))e.currentTarget.releasePointerCapture(e.pointerId);}}>{active.text||"Votre texte libre"}</button>
+        <div className="relative aspect-[297/210] overflow-hidden rounded-lg border bg-white shadow-sm" style={{containerType:"inline-size"}} aria-label="Aperçu de la pochette A4 paysage">
+          <svg viewBox="0 0 297 210" className="absolute inset-0 h-full w-full" role="img" aria-label="Couverture sur la moitié droite, verso libre à gauche">
+            <line x1="148.5" y1="5" x2="148.5" y2="205" stroke="#c7ccd1" strokeWidth=".2" strokeDasharray="1 1"/>
+            <rect x="160.5" y="12" width="124.5" height="186" fill="white" stroke={branding.secondaryColor} strokeWidth=".3"/>
+            <rect x="210.75" y="12" width="24" height="2" fill={branding.primaryColor}/>
+            {branding.logoDataUrl&&<image href={branding.logoDataUrl} x="202.75" y="23" width="40" height="30" preserveAspectRatio="xMidYMid meet"/>}
+            <text textAnchor="middle" fontWeight="700" fontSize="8.47" fill={branding.primaryColor}>{coverTitleLines(branding.title||event.name).map((line,i)=><tspan key={i} x={pocketCover.centerX} y={64+8.47+i*11}>{line}</tspan>)}</text>
+            <line x1="201.75" y1="88" x2="243.75" y2="88" stroke={branding.secondaryColor} strokeWidth=".7"/>
+            <text x="222.75" y="100.8" textAnchor="middle" fontSize="2.82" fontWeight="700" fill="#667080">{active.classes.length>1?"CLASSES ASSOCIÉES":"CLASSE"}</text>
+            <text textAnchor="middle" fontWeight="700" fontSize="7.76" fill={branding.primaryColor}>{coverTitleLines(active.classes.join(" · ")||"Classes à choisir",25).map((line,i)=><tspan key={i} x="222.75" y={107+7.76+i*10.1}>{line}</tspan>)}</text>
+          </svg>
+          <button type="button" aria-label="Déplacer le texte libre" className="absolute cursor-move select-none touch-none rounded border border-dashed border-slate-400 text-left" style={{left:`${50+active.x/2}%`,top:`${active.y}%`,maxWidth:`${48-active.x/2}%`,color:branding.primaryColor,fontSize:`${active.fontSize/8.419}cqw`,lineHeight:1.25}}
+            onPointerDown={e=>{dragStart.current={x:active.x,y:active.y,clientX:e.clientX,clientY:e.clientY};e.currentTarget.setPointerCapture(e.pointerId);}}
+            onPointerMove={e=>{if(!dragStart.current||!e.currentTarget.hasPointerCapture(e.pointerId))return;const r=e.currentTarget.parentElement!.getBoundingClientRect();update(pocketDragPosition(dragStart.current,e.clientX,e.clientY,r.width,r.height));}}
+            onPointerUp={e=>{dragStart.current=undefined;if(e.currentTarget.hasPointerCapture(e.pointerId))e.currentTarget.releasePointerCapture(e.pointerId);}}
+            onPointerCancel={()=>{dragStart.current=undefined;}}>{active.text||"Votre texte libre"}</button>
         </div>
-        <p className="mt-2 text-xs text-slate-500">La moitié droite reste libre. Le PDF comprend seulement un repère central de pliage, sans URL ni numéro de page.</p>
+        <p className="mt-2 text-xs text-slate-500">La couverture est à droite ; la moitié gauche reste libre pour le pliage. Le PDF comprend seulement un repère central de pliage, sans URL ni numéro de page.</p>
       </div>
     </div>}
     {!!pockets.length&&<Button disabled={busy||!pockets.some(p=>p.classes.length)} onClick={()=>void generate(false)}><Download/>{busy?"Création…":"Télécharger mes pochettes personnalisées"}</Button>}

@@ -2,6 +2,7 @@ import assert from "node:assert/strict";
 import { File } from "node:buffer";
 import { readFile, mkdir, writeFile } from "node:fs/promises";
 import * as XLSX from "xlsx";
+import { pocketCover, pocketDragPosition } from "../lib/dossard/pocket-cover";
 import { PDFDocument } from "pdf-lib";
 import { createRaceEvent } from "../lib/dossard/defaults";
 import { barcodeGeometry, verifyCode128 } from "../lib/dossard/barcode";
@@ -93,6 +94,9 @@ async function printDocumentTests() {
     assert.equal((await PDFDocument.load(bytes)).getPageCount(),Math.ceil(count/30));
   }
   const pockets=[{id:"test",classes:["CP A","CE1 B"],text:"Mme Dupont · Distribution des dossards",x:12,y:70,fontSize:18}];
+  assert(pocketCover.frame.x>148.5);
+  assert(pocketCover.centerX>148.5);
+  assert.deepEqual(pocketDragPosition({x:20,y:70,clientX:300,clientY:400},330,420,600,400),{x:30,y:75});
   const pocket=await generatePocketPdf(event,pockets);
   const pocketDoc=await PDFDocument.load(pocket);
   assert.equal(pocketDoc.getPageCount(),1);
