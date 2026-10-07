@@ -725,12 +725,9 @@ export function CourseStep({
   };
   const printBackupSheet = () => {
     if (!selectedHeat || entriesLoading) return;
-    const pageCount = Math.max(1, Math.ceil(entries.length / 25));
-    const pages = Array.from({ length: pageCount }, (_, page) => {
-      const rows = Array.from({ length: 25 }, (_, line) => `<tr><td>${page * 25 + line + 1}</td><td></td><td></td></tr>`).join("");
-      return `<section class="backup-page">${documentHeader()}<h2>${esc(selectedHeat.name)} · Feuille de secours</h2><p>${esc(event.year)} · ${esc(event.location || "")} · Feuille ${page + 1} / ${pageCount}</p><p class="backup-fields">Date : __________________ &nbsp; Poste / tronçon : __________________<br>Dernier dossard confirmé : ______________ &nbsp; Dernière arrivée confirmée : __________</p><p class="backup-instructions">Noter les dossards dans l’ordre du passage, tous niveaux et sexes mélangés. Si la saisie commence pendant la course, corriger les numéros d’ordre selon la dernière arrivée confirmée. Avec plusieurs postes, conserver l’ordre des tronçons A → B → C → D.</p><table><thead><tr><th style="width:18%">Ordre d’arrivée</th><th style="width:32%">Numéro de dossard</th><th>Remarque</th></tr></thead><tbody>${rows}</tbody></table><p class="backup-footer">Saisir les dossards manquants dans cet ordre avant de clôturer la course. Vérifier les scans en attente pour éviter les doublons. · Gestion Cross · L. RIGAUX</p></section>`;
-    }).join("");
-    printWindow(`${selectedHeat.name} - feuille de secours`, `<style>@page{size:A4 portrait;margin:12mm}.backup-page{break-after:page;page-break-after:always}.backup-page:last-of-type{break-after:auto;page-break-after:auto}.backup-page header{margin-bottom:3mm;padding-bottom:3mm;border-bottom-width:2px;gap:4mm}.backup-page header img{max-width:22mm;max-height:18mm}.backup-page h1{font-size:19px}.backup-page h2{font-size:17px;margin:3mm 0 2mm}.backup-page p{font-size:11px;margin:2mm 0;color:#334155}.backup-page .backup-fields{line-height:1.9}.backup-page .backup-instructions{font-size:10px;line-height:1.35}.backup-page table{margin-top:3mm;table-layout:fixed}.backup-page th{font-size:11px;padding:2mm;border:1px solid #94a3b8}.backup-page td{height:6.5mm;padding:0 2mm;border:1px solid #94a3b8;font-size:11px}.backup-page .backup-footer{font-size:9px;margin-top:3mm}body>.footer{display:none}</style>${pages}`);
+    const rows = Array.from({ length: 30 }, () => "<tr><td></td><td></td></tr>").join("");
+    const page = `<section class="backup-page">${documentHeader()}<h2>${esc(selectedHeat.name)} · Feuille de secours</h2><table><thead><tr><th style="width:40%">Ordre d’arrivée</th><th>Numéro de dossard</th></tr></thead><tbody>${rows}</tbody></table></section>`;
+    printWindow(`${selectedHeat.name} - feuille de secours`, `<style>@page{size:A4 portrait;margin:12mm}.backup-page header{margin-bottom:3mm;padding-bottom:3mm;border-bottom-width:2px;gap:4mm}.backup-page header img{max-width:22mm;max-height:18mm}.backup-page h1{font-size:19px}.backup-page h2{font-size:17px;margin:3mm 0 2mm}.backup-page p{font-size:11px;margin:2mm 0;color:#334155}.backup-page table{margin-top:3mm;table-layout:fixed}.backup-page th{font-size:12px;padding:2mm;border:1px solid #94a3b8}.backup-page td{height:6.8mm;padding:0 2mm;border:1px solid #94a3b8}body>.footer{display:none}</style>${page}`);
   };
   const printClasses = () => {
     if (!selectedHeat || !classResults.length) return;
@@ -1383,7 +1380,7 @@ export function CourseStep({
           {courseView === "results" && (
             <section className="cross-panel p-5 sm:p-6">
               <h3 className="text-lg font-bold">Feuille de secours · {selectedHeat.name}</h3>
-              <p className="mt-1 text-sm text-slate-500">À imprimer avant la course : en-tête personnalisé, ordre d’arrivée, dossards et remarques. 25 lignes par feuille, avec assez de feuilles pour les élèves inscrits.</p>
+              <p className="mt-1 text-sm text-slate-500">Une seule page A4 avec l’en-tête de la course et 30 lignes vierges : ordre d’arrivée et numéro de dossard. Imprimez plusieurs exemplaires si nécessaire.</p>
               <Button className="mt-4" variant="outline" disabled={entriesLoading} onClick={printBackupSheet}><Printer />Imprimer la feuille de secours</Button>
             </section>
           )}
