@@ -161,6 +161,24 @@ test("File corrompue : refus explicite, jamais de vidage silencieux", () => {
   assert.throws(() => new ScanQueue(storage, "bad"));
   assert.equal(map.get("bad"), '{"unexpected":true}');
 });
+test("700 scans en attente : clôture, accès perdu et erreur inconnue conservent la file complète", () => {
+  const memory = new Map<string, string>();
+  const local = { getItem: (key: string) => memory.get(key) ?? null, setItem: (key: string, value: string) => { memory.set(key, value); } };
+  const q = new ScanQueue(local, "closing");
+  for (let i = 1; i <= 700; i++) q.add(String(i).padStart(4, "0"));
+  for (const error of ["COURSE_TERMINEE_VERROUILLEE", "COURSE_NON_DEMARREE", "POSTE_NON_ENREGISTRE", "CODE_INVALIDE", "HTTP_502", "REQUEST_TIMEOUT", "ERREUR_INATTENDUE"]) {
+    assert.equal(q.rejectFirst(new Error(error)), false);
+    assert.equal(q.length, 700);
+    assert.equal(new ScanQueue(local, "closing").length, 700);
+  }
+  assert.equal(q.rejectFirst(new Error("DOSSARD_INCONNU")), true);
+  assert.equal(q.first, "0002");
+  assert.equal(q.rejectFirst(new Error("DOSSARD_DEJA_SCANNÉ")), true);
+  assert.equal(q.first, "0003");
+  assert.equal(q.rejectFirst(new Error("PARTICIPANT_DISPENSÉ")), true);
+  assert.equal(q.length, 697);
+  assert.deepEqual(new ScanQueue(local, "closing").snapshot(), q.snapshot());
+});
 test("Réseau/timeout : réessai ; dossard inconnu : refus sans réessai infini", () => {
   assert(isRetryableRaceError(new Error("REQUEST_TIMEOUT")));
   assert(isRetryableRaceError(new Error("ARRIVEE_NON_ENREGISTREE")));

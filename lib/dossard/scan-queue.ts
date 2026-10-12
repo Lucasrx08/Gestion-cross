@@ -38,6 +38,14 @@ export class ScanQueue {
   complete() {
     this.save(this.items.slice(1));
   }
+  /** Seul un refus propre à ce dossard peut le retirer. Une fermeture de course,
+   * une perte d’accès ou une réponse inconnue conserve toute la file. */
+  rejectFirst(error: unknown) {
+    const code = error instanceof Error ? error.message : String(error);
+    if (!["DOSSARD_INCONNU", "DOSSARD_DEJA_SCANNÉ", "PARTICIPANT_DISPENSÉ"].includes(code)) return false;
+    this.complete();
+    return true;
+  }
   clear() {
     this.save([]);
   }

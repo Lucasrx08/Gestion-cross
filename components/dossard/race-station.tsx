@@ -137,7 +137,9 @@ export function RaceStation({
           const message = raceErrorMessage(error);
           setScanError(`Dossard ${bibCode} : ${message}`);
           toast.error(`Dossard ${bibCode} · ${message}`);
-          if (isRetryableRaceError(error)) {
+          if (!queueRef.current.rejectFirst(error)) {
+            // Un refus de la course ou du poste n’est pas un refus du dossard.
+            // Garder la file jusqu’à la relecture du statut ou sa transmission.
             setConnected(false);
             retryLater = true;
             break;
@@ -145,6 +147,9 @@ export function RaceStation({
           setRejected((items) =>
             [`Dossard ${bibCode} : ${message}`, ...items].slice(0, 20),
           );
+          setQueued(queueRef.current.length);
+          setPendingCodes(queueRef.current.snapshot());
+          continue;
         }
         queueRef.current.complete();
         setQueued(queueRef.current.length);
