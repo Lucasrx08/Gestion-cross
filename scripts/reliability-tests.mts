@@ -330,7 +330,7 @@ test("Challenge général : filles et garçons additionnés par classe sur des c
   ];
   const result = overallChallenge(heats);
   assert.equal(result.length, 2);
-  assert.deepEqual(result.map(r => [r.points, r.girls, r.boys, r.members, r.courses]), [[3, 1, 1, 2, 2], [3, 1, 1, 2, 2]]);
+  assert.deepEqual(result.map(r => [r.score, r.girls, r.boys, r.members, r.courses]), [[3, 1, 1, 2, 2], [3, 1, 1, 2, 2]]);
   assert.deepEqual(overallChallenge([...heats, { ...heats[0], heat: { ...heats[0].heat, status: "running" } }, { ...heats[1], heat: { ...heats[1].heat, challenge_enabled: false } }]), result);
 });
 test("Tous les classements Excel : arrivée commune présente et temps supprimé", () => {

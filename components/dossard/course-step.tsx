@@ -58,7 +58,7 @@ import {
 } from "@/lib/dossard/race-api";
 import {
   buildChallenge,
-  challengePenalties,
+  formatChallengeScore,
   challengeRule,
   classKey,
   gradeCategory,
@@ -181,6 +181,8 @@ export function CourseStep({
   const [challengeEnabled, setChallengeEnabled] = useState(true);
   const [stationCode, setStationCode] = useState("");
   const [scheduledTime, setScheduledTime] = useState("");
+  const scheduledInputRef = useRef<HTMLInputElement>(null);
+  const planRevisionRef = useRef(0);
   const [editingHeat, setEditingHeat] = useState<CloudHeat>();
   const [ownerLoading, setOwnerLoading] = useState(true);
   const [ownerError, setOwnerError] = useState("");
@@ -228,10 +230,12 @@ export function CourseStep({
   const branding = resolveEventBranding(event);
 
   const refreshOwner = async () => {
+    const revision = planRevisionRef.current;
     try {
       const state = await ownerApi<OwnerState>("owner_state", {
         localEventId: event.id,
       });
+      if (revision !== planRevisionRef.current) return;
       setCloudEvent(state.event);
       setHeats(state.heats ?? []);
       setOwnerError("");
@@ -250,9 +254,10 @@ export function CourseStep({
   };
   const refreshEntries = async (heatId = selectedHeatId) => {
     if (!heatId) return;
+    const revision = planRevisionRef.current;
     try {
       const result = await ownerApi<HeatResponse>("heat_entries", { heatId });
-      if (activeHeatRef.current !== heatId) return;
+      if (activeHeatRef.current !== heatId || revision !== planRevisionRef.current) return;
       setEntries(result.entries ?? []);
       setStations(result.stations ?? []);
       setHeats((items) =>
@@ -431,7 +436,10 @@ export function CourseStep({
     );
     if (!participants.length)
       return toast.error("Aucun élève ne correspond à cette sélection.");
+    const requestedTime = scheduledInputRef.current?.value ?? scheduledTime;
+    if (requestedTime && !/^([01]\d|2[0-3]):[0-5]\d$/.test(requestedTime)) return toast.error("Indiquez un horaire valide (HH:MM).");
     setLoading(true);
+    planRevisionRef.current++;
     try {
       await ownerApi("sync_event", { event });
       const result = await ownerApi<{
@@ -443,19 +451,26 @@ export function CourseStep({
         name: heatName.trim(),
         selectedClasses: selectedOptions.map((option) => option.label),
         sexFilter,
-        scheduledTime: scheduledTime || null,
+        scheduledTime: requestedTime || null,
         challengeEnabled,
         challengeClasses: selectedOptions.map((option) => option.label),
         challengeBestCount: null,
         participantIds: participants.map((participant) => participant.id),
       });
+      const saved = await ownerApi<HeatResponse>("heat_entries", { heatId: result.heat.id });
+      if ((saved.heat.scheduled_time?.slice(0, 5) ?? "") !== requestedTime) {
+        throw new Error("L’horaire relu ne correspond pas à votre modification. La course reste ouverte pour correction.");
+      }
+      planRevisionRef.current++;
+      setHeats(items => {
+        const updated = { ...items.find(item => item.id === saved.heat.id), ...saved.heat, counts: { total: saved.entries.length, registered: saved.entries.filter(e => e.status === "registered").length, finished: saved.entries.filter(e => e.status === "finished").length, dnf: saved.entries.filter(e => e.status === "dnf").length, exempt: saved.entries.filter(e => e.status === "exempt").length, absent: saved.entries.filter(e => e.status === "absent").length } };
+        return items.some(item => item.id === updated.id) ? items.map(item => item.id === updated.id ? updated : item) : [...items, updated];
+      });
+      if (activeHeatRef.current === saved.heat.id) setEntries(saved.entries);
+      setSelectedHeatId(saved.heat.id);
       setCreateOpen(false);
       resetCreate();
-      await refreshOwner();
-      setSelectedHeatId(result.heat.id);
-      toast.success(
-        `Course ${editingHeat ? "modifiée" : "préparée"} avec ${result.participantCount} élèves. Elle reste prête à lancer.`,
-      );
+      toast.success(`Course ${editingHeat ? "modifiée" : "préparée"} · ${requestedTime ? `horaire confirmé à ${requestedTime}` : "horaire libre confirmé"} · ${result.participantCount} élèves.`);
     } catch (error) {
       toast.error(raceErrorMessage(error));
     } finally {
@@ -603,23 +618,14 @@ export function CourseStep({
   };
   const printClasses = () => {
     if (!selectedHeat || !classResults.length) return;
-    const rows = classResults
-      .map(
-        (result, index) =>
-          `<tr><td class="podium">${index + 1}</td><td><b>${esc(result.className)}</b></td><td>${result.points}</td><td>${result.members}</td></tr>`,
-      )
-      .join("");
-    const penalties = challengePenalties(entries);
-    printWindow(
-      `${selectedHeat.name} - challenge interclasses`,
-      `${documentHeader()}<h2>${esc(selectedHeat.name)} · Challenge interclasses</h2><p class="note"><b>Tous les élèves comptent.</b> Absents et dispensés : dernier arrivé + 1, soit ${penalties.absent} point(s). Abandons (non-finisseurs) : dernier arrivé + 10, soit ${penalties.dnf} point(s). Le plus petit total gagne.</p><table><thead><tr><th>Rang</th><th>Classe</th><th>Points</th><th>Élèves comptabilisés</th></tr></thead><tbody>${rows}</tbody></table>`,
-    );
+    const rows = classResults.map((result, index) => `<tr><td>${index + 1}</td><td>${esc(result.className)}</td><td>${formatChallengeScore(result.score)}</td><td>${formatChallengeScore(result.girlsRatio)} (${result.girls})</td><td>${formatChallengeScore(result.boysRatio)} (${result.boys})</td><td>${result.exempt}</td></tr>`).join("");
+    printWindow(`${selectedHeat.name} - challenge interclasses`, `${documentHeader()}<h2>${esc(selectedHeat.name)} · Challenge de cette course</h2><p class="note">${esc(challengeRule)} Les effectifs sont indiqués entre parenthèses.</p><table><thead><tr><th>Rang</th><th>Classe</th><th>Score</th><th>Moyenne filles</th><th>Moyenne garçons</th><th>Dispensés exclus</th></tr></thead><tbody>${rows}</tbody></table>`);
   };
 
   const printOverall = () => {
     if (challengeLoading || challengeError || !overallResults.length) return;
-    const rows = overallResults.map((result, index) => `<tr><td>${index + 1}</td><td>${esc(result.className)}</td><td>${result.points}</td><td>${result.girls}</td><td>${result.boys}</td><td>${result.unknown}</td><td>${result.members}</td><td>${result.courses}</td></tr>`).join("");
-    printWindow(`${event.name} - challenge interclasses - ${challengeGradeLabel}`, `${documentHeader()}<h2>Challenge interclasses · ${esc(challengeGradeLabel)}</h2><p class="note">Filles et garçons d’une même classe sont additionnés, y compris dans des courses séparées. ${esc(challengeRule)} Seules les courses terminées avec challenge activé sont incluses.</p><table><thead><tr><th>Rang</th><th>Classe</th><th>Points cumulés</th><th>Filles</th><th>Garçons</th><th>Sexe non renseigné</th><th>Élèves comptabilisés</th><th>Courses</th></tr></thead><tbody>${rows}</tbody></table>`);
+    const rows = overallResults.map((result, index) => `<tr><td>${result.complete ? index + 1 : "—"}</td><td>${esc(result.className)}${result.complete ? "" : " · Provisoire"}</td><td>${formatChallengeScore(result.score)}</td><td>${formatChallengeScore(result.girlsRatio)} (${result.girls})</td><td>${formatChallengeScore(result.boysRatio)} (${result.boys})</td><td>${result.exempt}</td></tr>`).join("");
+    printWindow(`${event.name} - challenge interclasses - ${challengeGradeLabel}`, `${documentHeader()}<h2>Challenge interclasses · ${esc(challengeGradeLabel)}</h2><p class="note">${esc(challengeRule)} Seules les courses terminées avec challenge activé sont incluses. Les effectifs sont indiqués entre parenthèses.</p><table><thead><tr><th>Rang</th><th>Classe</th><th>Score F + G</th><th>Moyenne filles</th><th>Moyenne garçons</th><th>Dispensés exclus</th></tr></thead><tbody>${rows}</tbody></table>`);
   };
 
   const downloadResults = async (
@@ -653,7 +659,7 @@ export function CourseStep({
   };
 
   const social = async (kind: "individual" | "classes", story = false, general = false) => {
-    const socialClassResults = general ? overallResults : classResults;
+    const socialClassResults = general ? overallResults.filter(result => result.complete) : classResults.filter(result => result.score !== null);
     if (general && (challengeLoading || challengeError || !socialClassResults.length)) return;
     if (kind === "individual" && selectedGroups.length !== 1)
       return toast.error(
@@ -678,18 +684,17 @@ export function CourseStep({
       setBrandingOpen(true);
       return toast.error("Le logo de l’événement n’a pas pu être chargé. Ajoutez-le à nouveau dans « En-tête & visuels ».");
     }
-    const penalties = challengePenalties(entries);
     drawSocialResults(ctx, {
       story,
       title: branding.title || event.name,
       subtitle: branding.subtitle || "",
       heading: kind === "classes" ? "CHALLENGE INTERCLASSES" : "CLASSEMENT INDIVIDUEL",
       category: general ? `${challengeGradeLabel} · filles + garçons` : kind === "individual" ? selectedGroups[0]?.category || "" : selectedHeat!.name,
-      note: kind === "classes" ? general ? "Courses terminées · tous les élèves comptent" : `Absent / dispensé : ${penalties.absent} pts · abandon : ${penalties.dnf} pts` : selectedHeat!.name,
+      note: kind === "classes" ? "Moyenne filles + moyenne garçons · dispensés exclus" : selectedHeat!.name,
       primary: branding.primaryColor || "#1154b3",
       secondary: branding.secondaryColor || "#fed60b",
       rows: kind === "classes"
-        ? socialClassResults.map((result, index) => ({ rank: index + 1, label: result.className, detail: `${result.points} pts` }))
+        ? socialClassResults.map((result, index) => ({ rank: index + 1, label: result.className, detail: `${formatChallengeScore(result.score)}` }))
         : (selectedGroups[0]?.entries.filter(entry => entry.status === "finished") || []).map(entry => ({
             rank: categoryRanks.get(entry.id)?.rank || 0,
             label: `${entry.participant.first_name} ${entry.participant.last_name.toUpperCase()}`,
@@ -927,7 +932,7 @@ export function CourseStep({
       {(courseView === "rankings" || courseView === "results") && (
         <section className="cross-panel overflow-hidden">
           <div className="flex flex-wrap items-center justify-between gap-3 border-b p-5">
-            <div><h3 className="text-xl font-bold">Challenge interclasses général</h3><p className="mt-1 text-sm text-slate-500">Filles + garçons de la même classe, même dans des courses séparées. Cumul des {challengeCourses.length} course(s) terminée(s) avec challenge activé.</p><p className="mt-1 text-xs text-slate-500">{challengeRule}</p></div>
+            <div><h3 className="text-xl font-bold">Challenge interclasses général</h3><p className="mt-1 text-sm text-slate-500">Moyenne filles + moyenne garçons de la même classe, même dans des courses séparées. {challengeCourses.length} course(s) terminée(s) avec challenge activé.</p><p className="mt-1 text-xs text-slate-500">{challengeRule}</p></div>
             <div className="flex flex-wrap gap-2"><Button variant="outline" disabled={challengeLoading} onClick={() => setChallengeRevision(value => value + 1)}>Actualiser le challenge</Button>{courseView === "results" && <><Button disabled={challengeLoading || !!challengeError || !overallResults.length} onClick={printOverall}><Printer />Imprimer le challenge général</Button><Button variant="outline" disabled={loading || challengeLoading || !!challengeError || !overallResults.length} onClick={() => void downloadResults("classes", true)}><FileSpreadsheet />Excel général</Button><Button variant="outline" disabled={challengeLoading || !!challengeError || !overallResults.length} onClick={() => void social("classes", false, true)}><ImageIcon />Post général</Button><Button variant="outline" disabled={challengeLoading || !!challengeError || !overallResults.length} onClick={() => void social("classes", true, true)}><Download />Story générale</Button></>}</div>
           </div>
           <div className="border-b bg-slate-50/60 p-4">
@@ -935,9 +940,9 @@ export function CourseStep({
               <Button size="sm" variant={challengeGrade === "all" ? "default" : "outline"} aria-pressed={challengeGrade === "all"} onClick={() => setChallengeGrade("all")}>Tous les niveaux</Button>
               {challengeGrades.map(grade => <Button key={grade} size="sm" variant={challengeGrade === grade ? "default" : "outline"} aria-pressed={challengeGrade === grade} onClick={() => setChallengeGrade(grade)}>{gradeLabels[grade] ?? grade}</Button>)}
             </div>
-            <p className="mt-2 text-xs text-slate-500">{challengeGradeLabel} · Le filtre s’applique au tableau, à l’impression, à l’Excel général et aux posts et stories du challenge général. Filles et garçons restent additionnés.</p>
+            <p className="mt-2 text-xs text-slate-500">{challengeGradeLabel} · Le filtre s’applique au tableau, à l’impression, à l’Excel général et aux posts et stories du challenge général. Les moyennes filles et garçons sont additionnées.</p>
           </div>
-          {challengeLoading ? <p className="p-5" role="status">Calcul du cumul filles et garçons…</p> : challengeError ? <p className="p-5 text-red-700" role="alert">{challengeError}</p> : !overallResults.length ? <p className="p-5 text-sm text-slate-500">{challengeGrade === "all" ? "Le challenge apparaîtra après la fin d’une course avec challenge activé." : `Aucun résultat de challenge pour le niveau ${challengeGradeLabel}.`}</p> : <div className="cross-scroll"><table className="cross-table w-full"><thead><tr className="bg-blue-50 text-left text-xs text-slate-500"><th>Rang</th><th>Classe</th><th>Points cumulés</th><th>Filles</th><th>Garçons</th><th>Sexe non renseigné</th><th>Élèves comptabilisés</th><th>Courses</th></tr></thead><tbody>{overallResults.map((result, index) => <tr className="border-t" key={classKey(result.className)}><td className="font-bold">{index + 1}</td><td className="font-bold">{result.className}</td><td>{result.points}</td><td>{result.girls}</td><td>{result.boys}</td><td>{result.unknown || "—"}</td><td>{result.members}</td><td>{result.courses}</td></tr>)}</tbody></table></div>}
+          {challengeLoading ? <p className="p-5" role="status">Calcul des moyennes filles et garçons…</p> : challengeError ? <p className="p-5 text-red-700" role="alert">{challengeError}</p> : !overallResults.length ? <p className="p-5 text-sm text-slate-500">{challengeGrade === "all" ? "Le challenge apparaîtra après la fin d’une course avec challenge activé." : `Aucun résultat de challenge pour le niveau ${challengeGradeLabel}.`}</p> : <div className="cross-scroll"><table className="cross-table w-full"><thead><tr className="bg-blue-50 text-left text-xs text-slate-500"><th>Rang</th><th>Classe</th><th>Score F + G</th><th>Moyenne filles</th><th>Moyenne garçons</th><th>Effectif F / G</th><th>Dispensés exclus</th><th>État</th></tr></thead><tbody>{overallResults.map((result, index) => <tr className="border-t" key={classKey(result.className)}><td className="font-bold">{result.complete ? index + 1 : "—"}</td><td className="font-bold">{result.className}</td><td className="font-bold">{formatChallengeScore(result.score)}</td><td>{formatChallengeScore(result.girlsRatio)}</td><td>{formatChallengeScore(result.boysRatio)}</td><td>{result.girls} / {result.boys}</td><td>{result.exempt}</td><td>{result.complete ? "Complet" : result.unknown ? "Sexe à renseigner" : "Provisoire"}</td></tr>)}</tbody></table></div>}
         </section>
       )}
       {courseView === "results" && heats.some((heat) => heat.status === "finished") && (
@@ -1315,8 +1320,7 @@ export function CourseStep({
                     Challenge de cette course
                   </h4>
                   <p className="text-sm text-slate-500">
-                    Filles et garçons de chaque classe sont additionnés dans cette course. Le cumul de toutes les courses figure dans le challenge général ci-dessus. Absents et dispensés : dernier +
-                    1. Abandons (non-finisseurs) : dernier + 10.
+                    {challengeRule} Le classement général regroupe les points et effectifs des courses terminées avant de calculer les moyennes.
                   </p>
                   <div className="mt-4 flex flex-wrap gap-2">
                     <Button
@@ -1363,7 +1367,7 @@ export function CourseStep({
                         key={result.className}
                         className="px-3 py-1.5 text-sm"
                       >
-                        {index + 1}. {result.className} · {result.points} pts
+                        {index + 1}. {result.className} · {formatChallengeScore(result.score)}
                       </Badge>
                     ))}
                   </div>
@@ -1435,6 +1439,7 @@ export function CourseStep({
                 </Label>
                 <Input
                   id="scheduled-time"
+                  ref={scheduledInputRef}
                   type="time"
                   value={scheduledTime}
                   onChange={(event) => setScheduledTime(event.target.value)}
@@ -1633,8 +1638,7 @@ export function CourseStep({
           <DialogHeader className="px-6 pr-16 pt-6">
             <DialogTitle>Absents, dispensés et non-finisseurs</DialogTitle>
             <DialogDescription>
-              Absents et dispensés : dernier arrivé + 1. Abandons
-              (non-finisseurs) : dernier arrivé + 10.
+              Dispensés : exclus des points et du ratio. Absents : dernier du niveau et du sexe + 1. Non finishers : dernier + 10.
             </DialogDescription>
           </DialogHeader>
           <div className="px-6 pb-3">

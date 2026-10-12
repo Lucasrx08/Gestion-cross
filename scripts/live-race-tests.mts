@@ -89,6 +89,17 @@ try {
     scheduledTime: "10:15",
   });
   heatId = created.heat.id;
+  assert.equal(created.heat.scheduled_time?.slice(0, 5), "10:15");
+  const updated = await call<{ heat: CloudHeat }>("update_heat", {
+    eventId: synced.event.id, heatId, name: "Course fictive multi-niveaux",
+    selectedClasses: classes, sexFilter: "all", challengeEnabled: true, challengeClasses: classes,
+    participantIds: event.participants.map(p => p.id), scheduledTime: "11:45",
+  });
+  assert.equal(updated.heat.scheduled_time?.slice(0, 5), "11:45");
+  const reread = await call<{ heat: CloudHeat }>("heat_entries", {heatId});
+  assert.equal(reread.heat.scheduled_time?.slice(0, 5), "11:45");
+  passed("Modification d’horaire 10:15 → 11:45 confirmée après relecture serveur");
+
   let details = await call<{ heat: CloudHeat; entries: HeatEntry[] }>(
     "heat_entries",
     { heatId },

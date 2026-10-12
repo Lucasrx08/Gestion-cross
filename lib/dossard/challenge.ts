@@ -118,55 +118,66 @@ export function rankWithinCategory(entries: HeatEntry[]) {
 }
 
 export function challengePenalties(entries: HeatEntry[]) {
-  const last = Math.max(
-    0,
-    ...entries
-      .filter((entry) => entry.status === "finished")
-      .map((entry) => entry.finish_position ?? 0),
-  );
-  return { last, absent: last + 1, exempt: last + 1, dnf: last + 10 };
+  const ranks = rankWithinCategory(entries);
+  const last = Math.max(0, ...[...ranks.values()].map(value => value.rank));
+  const byCategory = new Map<string, number>();
+  ranks.forEach(({ category, rank }) => byCategory.set(category, rank));
+  return { last, absent: last + 1, exempt: 0, dnf: last + 10, ranks, byCategory };
 }
 
-export function challengePoints(
-  entry: HeatEntry,
-  penalties: ReturnType<typeof challengePenalties>,
-) {
-  if (entry.status === "finished" && entry.finish_position != null)
-    return entry.finish_position;
-  return entry.status === "dnf" ? penalties.dnf : penalties.absent;
+export function challengePoints(entry: HeatEntry, penalties: ReturnType<typeof challengePenalties>): number | null {
+  if (entry.status === "exempt" || entry.status === "registered") return null;
+  if (entry.status === "finished") return penalties.ranks.get(entry.id)?.rank ?? null;
+  const category = individualCategory(entry.participant.class_name, entry.participant.sex);
+  const last = penalties.byCategory.get(category) ?? 0;
+  return last + (entry.status === "dnf" ? 10 : 1);
+}
+
+export function challengeSex(entry: HeatEntry): "girls" | "boys" | "unknown" {
+  const category = individualCategory(entry.participant.class_name, entry.participant.sex);
+  return category.endsWith(" · filles") ? "girls" : category.endsWith(" · garçons") ? "boys" : "unknown";
+}
+
+export function challengeRatios(result: { girls: number; boys: number; girlsPoints: number; boysPoints: number; unknown: number; pending: number }) {
+  const girlsRatio = result.girls ? result.girlsPoints / result.girls : null;
+  const boysRatio = result.boys ? result.boysPoints / result.boys : null;
+  return {
+    girlsRatio, boysRatio,
+    score: result.unknown || result.pending ? null : (girlsRatio ?? 0) + (boysRatio ?? 0),
+    complete: girlsRatio !== null && boysRatio !== null && result.unknown === 0 && result.pending === 0,
+  };
+}
+
+export function formatChallengeScore(score: number | null) {
+  return score === null ? "—" : score.toLocaleString("fr", { maximumFractionDigits: 3 });
 }
 
 export function buildChallenge(entries: HeatEntry[], classes: string[]) {
   const penalties = challengePenalties(entries);
   const labels = new Map<string, string>();
-  (classes.length
-    ? classes
-    : entries.map((entry) => entry.participant.class_name)
-  ).forEach((value) => {
+  (classes.length ? classes : entries.map(entry => entry.participant.class_name)).forEach(value => {
     const key = classKey(value);
     if (key && !labels.has(key)) labels.set(key, value.trim());
   });
-  return [...labels]
-    .map(([key, className]) => {
-      const members = entries.filter(
-        (entry) => classKey(entry.participant.class_name) === key,
-      );
-      return {
-        className,
-        points: members.reduce(
-          (sum, entry) => sum + challengePoints(entry, penalties),
-          0,
-        ),
-        members: members.length,
-        penalties,
-      };
-    })
-    .filter((item) => item.members > 0)
-    .sort(
-      (a, b) =>
-        a.points - b.points || a.className.localeCompare(b.className, "fr"),
-    );
+  return [...labels].map(([key, className]) => {
+    const members = entries.filter(entry => classKey(entry.participant.class_name) === key);
+    const totals = { girls: 0, boys: 0, unknown: 0, girlsPoints: 0, boysPoints: 0, points: 0, members: 0, exempt: 0, pending: 0 };
+    for (const entry of members) {
+      if (entry.status === "exempt") { totals.exempt++; continue; }
+      if (entry.status === "registered") { totals.pending++; continue; }
+      const points = challengePoints(entry, penalties);
+      if (points === null) { totals.pending++; continue; }
+      const sex = challengeSex(entry);
+      totals[sex]++;
+      if (sex === "girls") totals.girlsPoints += points;
+      if (sex === "boys") totals.boysPoints += points;
+      totals.points += points;
+      totals.members++;
+    }
+    return { className, ...totals, ...challengeRatios(totals), penalties };
+  }).filter(item => item.members || item.pending)
+    .sort((a, b) => (a.score ?? Infinity) - (b.score ?? Infinity) || a.className.localeCompare(b.className, "fr"));
 }
 
 export const challengeRule =
-  "Tous les élèves comptent. Absents et dispensés : dernier arrivé + 1. Abandons (non-finisseurs) : dernier arrivé + 10. Le plus petit total gagne.";
+  "Dispensés : aucun point, exclus des effectifs. Absents : dernier du niveau et du sexe + 1. Non finishers : dernier + 10. Moyenne filles = points filles ÷ effectif filles (arrivées, absentes et non finishers) ; idem garçons. Score de classe = moyenne filles + moyenne garçons. Le plus petit score gagne. Classement provisoire tant que les deux groupes ne sont pas disponibles.";

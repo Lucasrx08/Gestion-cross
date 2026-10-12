@@ -6,6 +6,7 @@ import {
   classKey,
   gradeCategory,
   individualCategory,
+  challengeRatios,
   individualGroups,
   rankWithinCategory,
 } from "./challenge";
@@ -26,45 +27,22 @@ export function overallChallenge(
   courses: Array<{ heat: CloudHeat; entries: HeatEntry[] }>,
   grade = "all",
 ) {
-  const totals = new Map<
-    string,
-    { className: string; points: number; members: number; courses: number; girls: number; boys: number; unknown: number }
-  >();
-  courses
-    .filter(({ heat }) => heat.challenge_enabled && heat.status === "finished")
-    .forEach(({ heat, entries }) => {
-      buildChallenge(
-        entries,
-        heat.challenge_classes.length
-          ? heat.challenge_classes
-          : heat.selected_classes,
-      ).forEach((result) => {
-        const key = classKey(result.className);
-        const current = totals.get(key) ?? {
-          className: result.className,
-          points: 0,
-          members: 0,
-          courses: 0,
-          girls: 0,
-          boys: 0,
-          unknown: 0,
-        };
-        entries.filter(entry => classKey(entry.participant.class_name) === key).forEach(entry => {
-          const category = individualCategory(entry.participant.class_name, entry.participant.sex);
-          if (category.endsWith(" · filles")) current.girls += 1;
-          else if (category.endsWith(" · garçons")) current.boys += 1;
-          else current.unknown += 1;
-        });
-        current.points += result.points;
-        current.members += result.members;
-        current.courses += 1;
-        totals.set(key, current);
-      });
+  const totals = new Map<string, {
+    className: string; points: number; members: number; courses: number;
+    girls: number; boys: number; unknown: number; girlsPoints: number; boysPoints: number; exempt: number; pending: number;
+  }>();
+  courses.filter(({ heat }) => heat.challenge_enabled && heat.status === "finished").forEach(({ heat, entries }) => {
+    buildChallenge(entries, heat.challenge_classes.length ? heat.challenge_classes : heat.selected_classes).forEach(result => {
+      const key = classKey(result.className);
+      const current = totals.get(key) ?? { className: result.className, points: 0, members: 0, courses: 0, girls: 0, boys: 0, unknown: 0, girlsPoints: 0, boysPoints: 0, exempt: 0, pending: 0 };
+      for (const field of ["points", "members", "girls", "boys", "unknown", "girlsPoints", "boysPoints", "exempt", "pending"] as const) current[field] += result[field];
+      current.courses++;
+      totals.set(key, current);
     });
-  return [...totals.values()].filter(result => grade === "all" || gradeCategory(result.className) === grade).sort(
-    (a, b) =>
-      a.points - b.points || a.className.localeCompare(b.className, "fr"),
-  );
+  });
+  return [...totals.values()].map(result => ({ ...result, ...challengeRatios(result) }))
+    .filter(result => grade === "all" || gradeCategory(result.className) === grade)
+    .sort((a, b) => Number(b.complete) - Number(a.complete) || (a.score ?? Infinity) - (b.score ?? Infinity) || a.className.localeCompare(b.className, "fr"));
 }
 
 export async function buildRaceWorkbook(
@@ -97,24 +75,20 @@ export async function buildRaceWorkbook(
       [grade === "all" ? "Challenge interclasses général" : `Challenge interclasses · ${grade}`],
       [challengeRule],
       [
-        "Le total général additionne les points obtenus par chaque classe dans toutes les courses terminées incluses dans cet export.",
+        "Les points et effectifs de chaque sexe sont cumulés avant division. Le score est la somme des deux moyennes, sans arrondi pour le classement.",
       ],
       [],
-      ["Rang", "Classe", "Points cumulés", "Filles", "Garçons", "Sexe non renseigné", "Élèves comptabilisés", "Courses"],
+      ["Rang", "Classe", "Score (moyennes F + G)", "Moyenne filles", "Moyenne garçons", "Effectif filles", "Effectif garçons", "Points filles", "Points garçons", "Dispensés exclus", "Statut"],
     ];
     overallChallenge(courses, grade).forEach((result, index) =>
       rows.push([
-        index + 1,
-        result.className,
-        result.points,
-        result.girls,
-        result.boys,
-        result.unknown,
-        result.members,
-        result.courses,
+        result.complete ? index + 1 : "",
+        result.className, result.score, result.girlsRatio, result.boysRatio,
+        result.girls, result.boys, result.girlsPoints, result.boysPoints, result.exempt,
+        result.complete ? "Complet" : result.unknown ? "Sexe à renseigner" : "Provisoire",
       ]),
     );
-    append(rows, "Classement général", [8, 30, 18, 10, 10, 22, 24, 12]);
+    append(rows, "Classement général", [8, 30, 26, 18, 18, 18, 18, 16, 16, 20, 24]);
   }
 
   for (const [index, { heat, entries }] of courses.entries()) {
@@ -162,14 +136,13 @@ export async function buildRaceWorkbook(
       rows.push(
         [challengeRule],
         [],
-        ["Rang", "Classe", "Points", "Élèves comptabilisés"],
+        ["Rang", "Classe", "Score", "Moyenne filles", "Moyenne garçons", "Points", "Élèves comptabilisés", "Dispensés exclus"],
       );
       classResults.forEach((result, position) =>
         rows.push([
           position + 1,
-          result.className,
-          result.points,
-          result.members,
+          result.className, result.score, result.girlsRatio, result.boysRatio,
+          result.points, result.members, result.exempt,
         ]),
       );
       rows.push(
@@ -192,7 +165,7 @@ export async function buildRaceWorkbook(
             entry.participant.last_name,
             entry.participant.first_name,
             labels[entry.status],
-            challengePoints(entry, penalties),
+            challengePoints(entry, penalties) ?? (entry.status === "exempt" ? "Exclu" : "À courir"),
           ]),
         );
     }
