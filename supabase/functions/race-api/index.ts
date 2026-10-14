@@ -16,6 +16,8 @@ type StatusRow = { heat_id: string; status: string };
 type EntryRow = {
   id: string;
   status: string;
+  sex_override: string | null;
+  sex_corrected_at_scan: boolean;
   finish_position: number | null;
   station_order: number | null;
   station_position: number | null;
@@ -133,16 +135,23 @@ async function paged<T>(fetcher: (from: number, to: number) => Promise<Page<T>>)
   return rows;
 }
 async function fetchEntries(c: SupabaseClient, heatId: string) {
-  return paged<EntryRow>(async (from, to) => {
+  const entries = await paged<EntryRow>(async (from, to) => {
     const result = await c
       .from("cross_entries")
-      .select("id,status,finish_position,station_order,station_position,elapsed_ms,scanned_at,station_id,participant:cross_participants(id,local_participant_id,bib_code,bib_number,last_name,first_name,class_name,sex)")
+      .select("id,status,sex_override,sex_corrected_at_scan,finish_position,station_order,station_position,elapsed_ms,scanned_at,station_id,participant:cross_participants(id,local_participant_id,bib_code,bib_number,last_name,first_name,class_name,sex)")
       .eq("heat_id", heatId)
       .order("finish_position", { ascending: true, nullsFirst: false })
       .order("id", { ascending: true })
       .range(from, to);
     return { data: result.data as EntryRow[] | null, error: result.error };
   });
+  return entries.map((entry) => ({
+    ...entry,
+    participant: {
+      ...entry.participant,
+      sex: entry.sex_override || entry.participant.sex,
+    },
+  }));
 }
 
 async function syncEvent(body: J) {

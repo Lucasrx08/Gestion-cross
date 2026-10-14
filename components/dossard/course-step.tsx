@@ -1210,6 +1210,11 @@ export function CourseStep({
                           </td>
                           <td className="p-3">
                             {entry.participant.class_name}
+                            {entry.sex_corrected_at_scan && (
+                              <Badge className="ml-2 bg-amber-100 text-amber-800">
+                                Sexe corrigé → {entry.participant.sex}
+                              </Badge>
+                            )}
                           </td>
                           <td className="p-3">
                             <div className="flex justify-end gap-1">

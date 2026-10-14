@@ -49,6 +49,7 @@ export interface CloudEvent {
 export interface HeatEntry {
   id: string;
   status: EntryStatus;
+  sex_corrected_at_scan?: boolean;
   finish_position: number | null;
   station_order: number | null;
   station_position: number | null;

@@ -41,6 +41,8 @@ type Arrival = {
   first_name: string;
   last_name: string;
   class_name: string;
+  sex: string;
+  sex_corrected?: boolean;
   elapsed_ms: number;
 };
 
@@ -130,9 +132,15 @@ export function RaceStation({
           if (!result.arrival) throw new Error("ARRIVEE_NON_ENREGISTREE");
           setLastArrival(result.arrival);
           setScanError("");
-          toast.success(
-            `${letters[result.arrival.station_order - 1]}${result.arrival.station_position} · ${result.arrival.first_name} ${result.arrival.last_name}`,
-          );
+          if (result.arrival.sex_corrected) {
+            toast.warning(
+              `${result.arrival.first_name} ${result.arrival.last_name} accepté · sexe corrigé en ${result.arrival.sex} pour cette course.`,
+            );
+          } else {
+            toast.success(
+              `${letters[result.arrival.station_order - 1]}${result.arrival.station_position} · ${result.arrival.first_name} ${result.arrival.last_name}`,
+            );
+          }
         } catch (error) {
           const message = raceErrorMessage(error);
           setScanError(`Dossard ${bibCode} : ${message}`);
@@ -567,10 +575,15 @@ export function RaceStation({
               )}
             </section>
             {lastArrival && (
-              <section className="rounded-[1.5rem] border-2 border-emerald-200 bg-emerald-50 p-5">
+              <section className={`rounded-[1.5rem] border-2 p-5 ${lastArrival.sex_corrected ? "border-amber-300 bg-amber-50" : "border-emerald-200 bg-emerald-50"}`}>
                 <p className="text-xs font-bold uppercase tracking-widest text-emerald-700">
                   Dernier scan confirmé
                 </p>
+                {lastArrival.sex_corrected && (
+                  <p className="mt-2 rounded-lg bg-white/80 p-2 text-sm font-bold text-amber-800">
+                    Sexe incohérent dans le fichier : élève accepté et classé en {lastArrival.sex === "F" ? "Filles" : "Garçons"} pour cette course.
+                  </p>
+                )}
                 <div className="mt-2 flex flex-col gap-4 sm:flex-row sm:items-end sm:justify-between">
                   <div>
                     <p className="text-4xl font-bold text-emerald-800">
