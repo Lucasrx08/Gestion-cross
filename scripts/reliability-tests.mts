@@ -45,9 +45,9 @@ const variants: Array<[string, string]> = [
   ["CE2 B", "CE2"],
   ["4ème Flessel", "4e"],
   ["Troisième Gaudí", "3e"],
-  ["2nde A", "2nde"],
-  ["Première B", "1re"],
-  ["Terminale C", "Terminale"],
+  ["2nde A", "Lycée"],
+  ["Première B", "Lycée"],
+  ["Terminale C", "Lycée"],
   ["CM1/CM2", "CM1 CM2"],
   ["Groupe bleu", "GROUPE BLEU"],
   ["", "Sans catégorie"],
@@ -92,6 +92,18 @@ const entries = [
   entry(6, "6ème C", 6),
   entry(7, "CM1", null, "absent"),
 ];
+
+const lycée = [
+  entry(70, "2nde A", 1),
+  entry(71, "Terminale ST2S A", 2),
+  entry(72, "Première ECP", 3),
+].map((item) => ({ ...item, participant: { ...item.participant, sex: "M" } }));
+const lycéeRanks = rankWithinCategory(lycée);
+test("Lycée : 2nde, 1re et Terminale partagent le même classement", () => {
+  assert.deepEqual(lycéeRanks.get("entry-70"), { category: "Lycée · garçons", rank: 1 });
+  assert.deepEqual(lycéeRanks.get("entry-71"), { category: "Lycée · garçons", rank: 2 });
+  assert.deepEqual(lycéeRanks.get("entry-72"), { category: "Lycée · garçons", rank: 3 });
+});
 test("Arrivées mélangées : rangs 6e et CM1 indépendants, absent non classé", () => {
   const ranks = rankWithinCategory(entries);
   assert.deepEqual(ranks.get("entry-6"), { category: "6e · filles", rank: 2 });

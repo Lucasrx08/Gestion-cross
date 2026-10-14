@@ -29,15 +29,15 @@ export function gradeCategory(value: string) {
     CINQUIEME: "5e",
     QUATRIEME: "4e",
     TROISIEME: "3e",
-    SECONDE: "2nde",
-    PREMIERE: "1re",
-    TERMINALE: "Terminale",
-    TERM: "Terminale",
+    SECONDE: "Lycée",
+    PREMIERE: "Lycée",
+    TERMINALE: "Lycée",
+    TERM: "Lycée",
   };
   const word = key.split(" ")[0];
   if (words[word]) return words[word];
-  if (/^2\s*(?:NDE|ND|DE)/.test(key)) return "2nde";
-  if (/^1\s*(?:ERE|ER|RE)/.test(key)) return "1re";
+  if (/^2\s*(?:NDE|ND|DE)/.test(key)) return "Lycée";
+  if (/^1\s*(?:ERE|ER|RE)/.test(key)) return "Lycée";
   return key || "Sans catégorie";
 }
 
@@ -51,9 +51,7 @@ export const gradeOrder = [
   "5e",
   "4e",
   "3e",
-  "2nde",
-  "1re",
-  "Terminale",
+  "Lycée",
 ];
 export function individualCategory(className: string, sex?: string) {
   const normalized = classKey(sex ?? "");

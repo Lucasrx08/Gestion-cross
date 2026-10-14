@@ -41,6 +41,14 @@ assert.deepEqual(categoryRanks.get("22"), { category: "CM1 · filles", rank: 1 }
 assert.deepEqual(categoryRanks.get("24"), { category: "CM1 · filles", rank: 2 });
 assert.deepEqual(categoryRanks.get("25"), { category: "CM2 · filles", rank: 1 });
 assert.deepEqual(categoryRanks.get("26"), { category: "5e · filles", rank: 1 });
+const lycéeRanks = rankWithinCategory([
+  entry(27, "finished", "2nde A", 1),
+  entry(28, "finished", "Terminale ST2S A", 2),
+  entry(29, "finished", "Première ECP", 3),
+]);
+assert.deepEqual(lycéeRanks.get("27"), { category: "Lycée · filles", rank: 1 });
+assert.deepEqual(lycéeRanks.get("28"), { category: "Lycée · filles", rank: 2 });
+assert.deepEqual(lycéeRanks.get("29"), { category: "Lycée · filles", rank: 3 });
 console.log("✓ Challenge : dispensés exclus, moyennes, abandon dernier + 10, absent dernier + 1 et aucune arrivée");
 
 const heat: CloudHeat = { id: "qa", event_id: "qa", name: "Course fictive", status: "finished", selected_classes: [], sex_filter: "all", challenge_enabled: true, challenge_classes: [], challenge_best_count: null, next_position: 1 };
