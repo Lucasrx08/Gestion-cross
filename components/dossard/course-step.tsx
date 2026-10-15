@@ -1293,8 +1293,8 @@ export function CourseStep({
               </div>
               <div className="mt-3 rounded-xl border p-3">
                 <p className="text-sm font-bold">Par niveau</p>
-                <Select value={resolvedChallengeExportGrade} onValueChange={setChallengeExportGrade}>
-                  <SelectTrigger className="mt-2 w-full"><SelectValue /></SelectTrigger>
+                <Select value={resolvedChallengeExportGrade} onValueChange={setChallengeExportGrade} disabled={!challengeExportGrades.length}>
+                  <SelectTrigger className="mt-2 w-full"><SelectValue placeholder="Aucun niveau disponible" /></SelectTrigger>
                   <SelectContent>{challengeExportGrades.map(grade => <SelectItem key={grade} value={grade}>{gradeLabels[grade] ?? grade}</SelectItem>)}</SelectContent>
                 </Select>
                 <div className="mt-2 flex flex-wrap gap-2">
