@@ -14,6 +14,40 @@ export interface TvResultsDesign {
   primary: string;
   secondary: string;
   rows: TvResultRow[];
+  heading?: string;
+  page?: number;
+  pageCount?: number;
+}
+
+export interface TvCategoryRows {
+  category: string;
+  rows: TvResultRow[];
+}
+
+export interface TvCategoryPage {
+  left: TvCategoryRows;
+  right?: TvCategoryRows;
+  page: number;
+  pageCount: number;
+}
+
+/** Associe deux catégories par écran et crée autant de pages que nécessaire. */
+export function paginateTvCategories(categories: TvCategoryRows[], pageSize = 20) {
+  const pages: TvCategoryPage[] = [];
+  for (let index = 0; index < categories.length; index += 2) {
+    const left = categories[index];
+    const right = categories[index + 1];
+    const pageCount = Math.max(1, Math.ceil(left.rows.length / pageSize), Math.ceil((right?.rows.length ?? 0) / pageSize));
+    for (let page = 0; page < pageCount; page += 1) {
+      pages.push({
+        left: { ...left, rows: left.rows.slice(page * pageSize, (page + 1) * pageSize) },
+        right: right ? { ...right, rows: right.rows.slice(page * pageSize, (page + 1) * pageSize) } : undefined,
+        page: page + 1,
+        pageCount,
+      });
+    }
+  }
+  return pages;
 }
 
 /** Demi-écran Full HD : deux PNG de 960 × 1080 se placent côte à côte sans retouche. */
@@ -64,7 +98,7 @@ export function drawTvTop20(
 
   text(design.title, 560, 82, 34, 680, design.primary, "center");
   text(design.subtitle, 560, 116, 21, 680, design.secondary, "center");
-  text("TOP 20", width / 2, 166, 40, width - 96, design.primary, "center");
+  text(design.heading ?? "TOP 20", width / 2, 166, 40, width - 96, design.primary, "center");
   text(design.course, width / 2, 207, 29, width - 96, design.secondary, "center");
 
   text("RANG", 48, 245, 16, 65, design.secondary);
@@ -89,5 +123,6 @@ export function drawTvTop20(
 
   if (!rows.length)
     text("Aucune arrivée enregistrée", width / 2, 560, 24, 760, design.primary, "center");
-  text("Classement selon l’ordre d’arrivée commun", width / 2, 1025, 16, width - 96, design.primary, "center");
+  const pageLabel = design.pageCount && design.pageCount > 1 ? ` · écran ${design.page}/${design.pageCount}` : "";
+  text(`Classement complet par catégorie${pageLabel}`, width / 2, 1025, 16, width - 96, design.primary, "center");
 }

@@ -16,6 +16,7 @@ import { participantRoster, rosterPrintDocument } from "../lib/dossard/participa
 import { drawSocialResults } from "../lib/dossard/social-results";
 import {
   drawTvTop20,
+  paginateTvCategories,
   TV_RESULT_HEIGHT,
   TV_RESULT_WIDTH,
 } from "../lib/dossard/tv-results";
@@ -511,7 +512,7 @@ test("Visuels blancs : logo séparé du titre, deux couleurs et lignes dans le c
     assert.equal(rects[0].colour, "#ffffff");
     assert(texts[0].y > logoBottom + 40);
     const resultRows = texts.filter(t => t.value === "6e AVIGNON");
-    assert.equal(resultRows.length, story ? 8 : 6);
+    assert.equal(resultRows.length, 10);
     assert(resultRows.at(-1)!.y < (story ? 1920 : 1080) - 125);
     assert(texts.every(t => ["#bf1281", "#f198a5"].includes(t.colour)));
   }
@@ -567,5 +568,20 @@ test("Top 20 TV : demi-écran Full HD, vingt arrivées et charte de l’événem
       ["#bf1281", "#f198a5"].includes(item.colour),
     ),
   );
+});
+test("TV complète : deux catégories côte à côte et pagination sans élève perdu", () => {
+  const pages = paginateTvCategories([
+    { category: "4e · filles", rows: Array.from({ length: 35 }, (_, index) => ({ rank: index + 1, name: `4F ${index + 1}`, className: "4e A" })) },
+    { category: "3e · filles", rows: Array.from({ length: 22 }, (_, index) => ({ rank: index + 1, name: `3F ${index + 1}`, className: "3e A" })) },
+    { category: "4e · garçons", rows: Array.from({ length: 7 }, (_, index) => ({ rank: index + 1, name: `4G ${index + 1}`, className: "4e B" })) },
+  ]);
+  assert.equal(pages.length, 3);
+  assert.deepEqual(pages.slice(0, 2).map(page => [page.left.category, page.right?.category, page.page, page.pageCount]), [
+    ["4e · filles", "3e · filles", 1, 2],
+    ["4e · filles", "3e · filles", 2, 2],
+  ]);
+  assert.equal(pages.flatMap(page => page.left.rows).length, 42);
+  assert.equal(pages.slice(0, 2).flatMap(page => page.right?.rows ?? []).length, 22);
+  assert.equal(pages[2].right, undefined);
 });
 console.log(`\n${checks} contrôles de fiabilité réussis.`);

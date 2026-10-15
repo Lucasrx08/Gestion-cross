@@ -5,6 +5,8 @@ import QRCode from "qrcode";
 import Image from "next/image";
 import {
   ArrowDown,
+  ChevronLeft,
+  ChevronRight,
   ArrowUp,
   Cloud,
   Copy,
@@ -76,6 +78,7 @@ import { resolveEventBranding, eventDocumentHeader } from "@/lib/dossard/event-b
 import { drawSocialResults } from "@/lib/dossard/social-results";
 import {
   drawTvTop20,
+  paginateTvCategories,
   TV_RESULT_HEIGHT,
   TV_RESULT_WIDTH,
 } from "@/lib/dossard/tv-results";
@@ -179,7 +182,9 @@ export function CourseStep({
     format: "post" | "story" | "tv";
     width: number;
     height: number;
+    pages?: Array<{ dataUrl: string; fileName: string }>;
   }>();
+  const [previewIndex, setPreviewIndex] = useState(0);
   const [statusOpen, setStatusOpen] = useState(false);
   const [qr, setQr] = useState("");
   const [heatName, setHeatName] = useState("");
@@ -802,7 +807,7 @@ export function CourseStep({
       story,
       title: branding.title || event.name,
       subtitle: branding.subtitle || "",
-      heading: kind === "classes" ? "CHALLENGE INTERCLASSES" : "CLASSEMENT INDIVIDUEL",
+      heading: kind === "classes" ? "CHALLENGE INTERCLASSES" : "TOP 10 · CLASSEMENT",
       category: general ? `${challengeGradeLabel} · filles + garçons` : kind === "individual" ? selectedGroups[0]?.category || "" : selectedHeat!.name,
       note: kind === "classes" ? "Moyenne filles + moyenne garçons · dispensés exclus" : selectedHeat!.name,
       primary: branding.primaryColor || "#1154b3",
@@ -829,7 +834,7 @@ export function CourseStep({
     });
   };
 
-  const tvTop20 = async () => {
+  const tvFullCategories = async () => {
     if (!selectedHeat || selectedHeat.status !== "finished") return;
     if (!branding.logoDataUrl) {
       setBrandingOpen(true);
@@ -837,18 +842,19 @@ export function CourseStep({
         "Ajoutez le logo de votre événement dans « En-tête & visuels » avant de créer l’export TV.",
       );
     }
-    const top = entries
-      .filter(
-        (entry) => entry.status === "finished" && entry.finish_position != null,
-      )
-      .slice()
-      .sort(
-        (a, b) =>
-          (a.finish_position ?? Infinity) -
-          (b.finish_position ?? Infinity),
-      )
-      .slice(0, 20);
-    if (!top.length)
+    const categories = individualGroups(entries)
+      .map(group => ({
+        category: group.category,
+        rows: group.entries
+          .filter(entry => entry.status === "finished" && entry.finish_position != null)
+          .map(entry => ({
+            rank: group.ranks.get(entry.id)?.rank ?? 0,
+            name: `${entry.participant.first_name} ${entry.participant.last_name.toUpperCase()}`.trim(),
+            className: entry.participant.class_name,
+          })),
+      }))
+      .filter(group => group.rows.length);
+    if (!categories.length)
       return toast.error("Aucune arrivée disponible pour cet export TV.");
 
     let logo: HTMLImageElement;
@@ -860,33 +866,50 @@ export function CourseStep({
         "Le logo de l’événement n’a pas pu être chargé. Ajoutez-le à nouveau dans « En-tête & visuels ».",
       );
     }
-    const canvas = document.createElement("canvas");
-    canvas.width = TV_RESULT_WIDTH;
-    canvas.height = TV_RESULT_HEIGHT;
-    const ctx = canvas.getContext("2d");
-    if (!ctx) return;
-    drawTvTop20(
-      ctx,
-      {
-        title: branding.title || event.name,
-        subtitle: branding.subtitle || "",
-        course: selectedHeat.name,
-        primary: branding.primaryColor || "#1154b3",
-        secondary: branding.secondaryColor || "#fed60b",
-        rows: top.map((entry) => ({
-          rank: entry.finish_position!,
-          name: `${entry.participant.first_name} ${entry.participant.last_name.toUpperCase()}`.trim(),
-          className: entry.participant.class_name,
-        })),
-      },
-      logo,
-    );
+    const categoryPages = paginateTvCategories(categories);
+    const pages = categoryPages.map((page, index) => {
+      const canvas = document.createElement("canvas");
+      canvas.width = TV_RESULT_WIDTH * 2;
+      canvas.height = TV_RESULT_HEIGHT;
+      const ctx = canvas.getContext("2d");
+      if (!ctx) throw new Error("CANVAS_INDISPONIBLE");
+      const drawPanel = (category: typeof page.left | undefined, offset: number) => {
+        const panel = document.createElement("canvas");
+        panel.width = TV_RESULT_WIDTH;
+        panel.height = TV_RESULT_HEIGHT;
+        const panelContext = panel.getContext("2d");
+        if (!panelContext) throw new Error("CANVAS_INDISPONIBLE");
+        drawTvTop20(panelContext, {
+          title: branding.title || event.name,
+          subtitle: branding.subtitle || "",
+          heading: "CLASSEMENT COMPLET",
+          course: category?.category ?? "—",
+          primary: branding.primaryColor || "#1154b3",
+          secondary: branding.secondaryColor || "#fed60b",
+          rows: category?.rows ?? [],
+          page: page.page,
+          pageCount: page.pageCount,
+        }, logo);
+        ctx.drawImage(panel, offset, 0);
+      };
+      drawPanel(page.left, 0);
+      drawPanel(page.right, TV_RESULT_WIDTH);
+      ctx.fillStyle = "#e2e8f0";
+      ctx.fillRect(TV_RESULT_WIDTH - 1, 32, 2, TV_RESULT_HEIGHT - 80);
+      const pair = [page.left.category, page.right?.category].filter(Boolean).join("-");
+      return {
+        dataUrl: canvas.toDataURL("image/png"),
+        fileName: `${safeFileName(event.name)}-${safeFileName(selectedHeat.name)}-${safeFileName(pair)}-ecran-${index + 1}.png`,
+      };
+    });
+    setPreviewIndex(0);
     setSocialPreview({
-      dataUrl: canvas.toDataURL("image/png"),
-      fileName: `${safeFileName(event.name)}-${safeFileName(selectedHeat.name)}-top-20-tv.png`,
+      dataUrl: pages[0].dataUrl,
+      fileName: pages[0].fileName,
       format: "tv",
-      width: TV_RESULT_WIDTH,
+      width: TV_RESULT_WIDTH * 2,
       height: TV_RESULT_HEIGHT,
+      pages,
     });
   };
 
@@ -1090,6 +1113,19 @@ export function CourseStep({
       </div>
     </section>
   );
+  const activePreview = socialPreview?.pages?.[previewIndex] ?? socialPreview;
+  const downloadPreview = (all = false) => {
+    if (!socialPreview || !activePreview) return;
+    const downloads = all && socialPreview.pages?.length
+      ? socialPreview.pages
+      : [{ dataUrl: activePreview.dataUrl, fileName: activePreview.fileName }];
+    downloads.forEach((item) => {
+      const link = document.createElement("a");
+      link.download = item.fileName;
+      link.href = item.dataUrl;
+      link.click();
+    });
+  };
   if (ownerLoading)
     return (
       <section className="grid min-h-48 place-items-center text-slate-500">
@@ -1615,15 +1651,15 @@ export function CourseStep({
                     <Button
                       variant="outline"
                       disabled={entriesLoading}
-                      onClick={() => void tvTop20()}
+                      onClick={() => void tvFullCategories()}
                     >
                       <ImageIcon />
-                      PNG TV · Top 20
+                      TV · classements complets
                     </Button>
                   </div>
                   <p className="mt-3 text-xs text-slate-500">
-                    Format demi-écran Full HD 960 × 1080 : placez deux courses
-                    côte à côte dans votre fichier télévision, sans recadrage.
+                    Deux catégories côte à côte en Full HD. Au-delà de 20 élèves,
+                    les écrans suivants sont créés automatiquement jusqu’au classement complet.
                   </p>
                 </article>
                 <article className="rounded-2xl border bg-white p-4">
@@ -1949,11 +1985,25 @@ export function CourseStep({
         </DialogContent>
       </Dialog>
 
-      <Dialog open={!!socialPreview} onOpenChange={open => { if (!open) setSocialPreview(undefined); }}>
-        <DialogContent className="flex max-h-[calc(100dvh-2rem)] flex-col sm:max-w-2xl">
-          <DialogHeader><DialogTitle>Aperçu {socialPreview?.format === "story" ? "de la story" : socialPreview?.format === "tv" ? "du Top 20 TV" : "de la publication"}</DialogTitle><DialogDescription>{socialPreview?.format === "tv" ? "Ce PNG occupe exactement la moitié d’un écran Full HD. Vérifiez le logo, les couleurs et les 20 arrivées." : "Vérifiez le logo et le classement avant de télécharger le visuel."}</DialogDescription></DialogHeader>
-          {socialPreview && <div className="min-h-0 overflow-auto rounded-xl bg-slate-100 p-3"><Image unoptimized src={socialPreview.dataUrl} alt="Visuel des résultats sur fond blanc" width={socialPreview.width} height={socialPreview.height} className="mx-auto h-auto max-h-[65dvh] w-auto max-w-full bg-white object-contain" /></div>}
-          <DialogFooter><Button variant="outline" onClick={() => setSocialPreview(undefined)}>Fermer</Button><Button onClick={() => { if (!socialPreview) return; const link = document.createElement("a"); link.download = socialPreview.fileName; link.href = socialPreview.dataUrl; link.click(); }}><Download />Télécharger le PNG</Button></DialogFooter>
+      <Dialog open={!!socialPreview} onOpenChange={open => { if (!open) { setSocialPreview(undefined); setPreviewIndex(0); } }}>
+        <DialogContent className="flex max-h-[calc(100dvh-2rem)] flex-col sm:max-w-5xl">
+          <DialogHeader>
+            <DialogTitle>Aperçu {socialPreview?.format === "story" ? "de la story Top 10" : socialPreview?.format === "tv" ? "des classements TV" : "de la publication Top 10"}</DialogTitle>
+            <DialogDescription>{socialPreview?.format === "tv" ? `Deux catégories par écran Full HD · classement complet${socialPreview.pages?.length ? ` · ${socialPreview.pages.length} écran(s)` : ""}.` : "Vérifiez le logo et le Top 10 avant de télécharger le visuel."}</DialogDescription>
+          </DialogHeader>
+          {activePreview && <div className="min-h-0 overflow-auto rounded-xl bg-slate-100 p-3"><Image unoptimized src={activePreview.dataUrl} alt="Visuel des résultats sur fond blanc" width={socialPreview?.width} height={socialPreview?.height} className="mx-auto h-auto max-h-[65dvh] w-auto max-w-full bg-white object-contain" /></div>}
+          {socialPreview?.pages && socialPreview.pages.length > 1 && (
+            <div className="flex items-center justify-center gap-3">
+              <Button size="sm" variant="outline" disabled={previewIndex === 0} onClick={() => setPreviewIndex(index => Math.max(0, index - 1))}><ChevronLeft />Précédent</Button>
+              <span className="text-sm font-bold">Écran {previewIndex + 1} / {socialPreview.pages.length}</span>
+              <Button size="sm" variant="outline" disabled={previewIndex === socialPreview.pages.length - 1} onClick={() => setPreviewIndex(index => Math.min(socialPreview.pages!.length - 1, index + 1))}>Suivant<ChevronRight /></Button>
+            </div>
+          )}
+          <DialogFooter>
+            <Button variant="outline" onClick={() => setSocialPreview(undefined)}>Fermer</Button>
+            <Button variant="outline" onClick={() => downloadPreview(false)}><Download />Télécharger cet écran</Button>
+            {socialPreview?.pages && socialPreview.pages.length > 1 && <Button onClick={() => downloadPreview(true)}><Download />Télécharger les {socialPreview.pages.length} écrans</Button>}
+          </DialogFooter>
         </DialogContent>
       </Dialog>
       <Dialog open={shareOpen} onOpenChange={setShareOpen}>
