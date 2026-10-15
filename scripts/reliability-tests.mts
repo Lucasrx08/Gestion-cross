@@ -15,6 +15,11 @@ import { buildRaceWorkbook, overallChallenge } from "../lib/dossard/race-results
 import { participantRoster, rosterPrintDocument } from "../lib/dossard/participant-roster";
 import { drawSocialResults } from "../lib/dossard/social-results";
 import {
+  drawTvTop20,
+  TV_RESULT_HEIGHT,
+  TV_RESULT_WIDTH,
+} from "../lib/dossard/tv-results";
+import {
   buildValidationChecks,
   validateParticipants,
 } from "../lib/dossard/validation";
@@ -510,5 +515,57 @@ test("Visuels blancs : logo séparé du titre, deux couleurs et lignes dans le c
     assert(resultRows.at(-1)!.y < (story ? 1920 : 1080) - 125);
     assert(texts.every(t => ["#bf1281", "#f198a5"].includes(t.colour)));
   }
+});
+test("Top 20 TV : demi-écran Full HD, vingt arrivées et charte de l’événement", () => {
+  const texts: Array<{ value: string; colour: string }> = [];
+  const rects: Array<{ colour: string; width: number; height: number }> = [];
+  const ctx = {
+    fillStyle: "",
+    strokeStyle: "",
+    lineWidth: 0,
+    font: "",
+    textAlign: "",
+    fillRect(this: { fillStyle: string }, _x: number, _y: number, width: number, height: number) {
+      rects.push({ colour: this.fillStyle, width, height });
+    },
+    measureText(this: { font: string }, value: string) {
+      return { width: value.length * Number.parseInt(this.font.split(" ")[1]) * 0.56 };
+    },
+    fillText(this: { fillStyle: string }, value: string) {
+      texts.push({ value, colour: this.fillStyle });
+    },
+    drawImage() {},
+    beginPath() {},
+    moveTo() {},
+    lineTo() {},
+    stroke() {},
+  } as unknown as CanvasRenderingContext2D;
+  drawTvTop20(
+    ctx,
+    {
+      title: "LA ROSE RUN 2026",
+      subtitle: "Saint-Lô",
+      course: "6e garçons",
+      primary: "#bf1281",
+      secondary: "#f198a5",
+      rows: Array.from({ length: 25 }, (_, index) => ({
+        rank: index + 1,
+        name: `ÉLÈVE ${index + 1}`,
+        className: "6e A",
+      })),
+    },
+    { width: 200, height: 200 } as HTMLImageElement,
+  );
+  assert.equal(TV_RESULT_WIDTH * 2, 1920);
+  assert.equal(TV_RESULT_HEIGHT, 1080);
+  assert.equal(rects[0].colour, "#ffffff");
+  assert.equal(texts.filter((item) => item.value.startsWith("ÉLÈVE ")).length, 20);
+  assert(!texts.some((item) => item.value === "ÉLÈVE 21"));
+  assert(texts.some((item) => item.value === "6e garçons"));
+  assert(
+    texts.every((item) =>
+      ["#bf1281", "#f198a5"].includes(item.colour),
+    ),
+  );
 });
 console.log(`\n${checks} contrôles de fiabilité réussis.`);

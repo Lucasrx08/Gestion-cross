@@ -74,6 +74,11 @@ import { GradeResults } from "./grade-results";
 import { EventBrandingDialog } from "./event-branding-dialog";
 import { resolveEventBranding, eventDocumentHeader } from "@/lib/dossard/event-branding";
 import { drawSocialResults } from "@/lib/dossard/social-results";
+import {
+  drawTvTop20,
+  TV_RESULT_HEIGHT,
+  TV_RESULT_WIDTH,
+} from "@/lib/dossard/tv-results";
 
 interface OwnerState {
   event: CloudEvent | null;
@@ -168,7 +173,13 @@ export function CourseStep({
   const [createOpen, setCreateOpen] = useState(false);
   const [shareOpen, setShareOpen] = useState(false);
   const [brandingOpen, setBrandingOpen] = useState(false);
-  const [socialPreview, setSocialPreview] = useState<{ dataUrl: string; fileName: string; story: boolean }>();
+  const [socialPreview, setSocialPreview] = useState<{
+    dataUrl: string;
+    fileName: string;
+    format: "post" | "story" | "tv";
+    width: number;
+    height: number;
+  }>();
   const [statusOpen, setStatusOpen] = useState(false);
   const [qr, setQr] = useState("");
   const [heatName, setHeatName] = useState("");
@@ -706,7 +717,74 @@ export function CourseStep({
         /\s+/g,
         "-",
       );
-    setSocialPreview({ dataUrl: canvas.toDataURL("image/png"), fileName, story });
+    setSocialPreview({
+      dataUrl: canvas.toDataURL("image/png"),
+      fileName,
+      format: story ? "story" : "post",
+      width,
+      height,
+    });
+  };
+
+  const tvTop20 = async () => {
+    if (!selectedHeat || selectedHeat.status !== "finished") return;
+    if (!branding.logoDataUrl) {
+      setBrandingOpen(true);
+      return toast.error(
+        "Ajoutez le logo de votre événement dans « En-tête & visuels » avant de créer l’export TV.",
+      );
+    }
+    const top = entries
+      .filter(
+        (entry) => entry.status === "finished" && entry.finish_position != null,
+      )
+      .slice()
+      .sort(
+        (a, b) =>
+          (a.finish_position ?? Infinity) -
+          (b.finish_position ?? Infinity),
+      )
+      .slice(0, 20);
+    if (!top.length)
+      return toast.error("Aucune arrivée disponible pour cet export TV.");
+
+    let logo: HTMLImageElement;
+    try {
+      logo = await loadCanvasImage(branding.logoDataUrl);
+    } catch {
+      setBrandingOpen(true);
+      return toast.error(
+        "Le logo de l’événement n’a pas pu être chargé. Ajoutez-le à nouveau dans « En-tête & visuels ».",
+      );
+    }
+    const canvas = document.createElement("canvas");
+    canvas.width = TV_RESULT_WIDTH;
+    canvas.height = TV_RESULT_HEIGHT;
+    const ctx = canvas.getContext("2d");
+    if (!ctx) return;
+    drawTvTop20(
+      ctx,
+      {
+        title: branding.title || event.name,
+        subtitle: branding.subtitle || "",
+        course: selectedHeat.name,
+        primary: branding.primaryColor || "#1154b3",
+        secondary: branding.secondaryColor || "#fed60b",
+        rows: top.map((entry) => ({
+          rank: entry.finish_position!,
+          name: `${entry.participant.first_name} ${entry.participant.last_name.toUpperCase()}`.trim(),
+          className: entry.participant.class_name,
+        })),
+      },
+      logo,
+    );
+    setSocialPreview({
+      dataUrl: canvas.toDataURL("image/png"),
+      fileName: `${safeFileName(event.name)}-${safeFileName(selectedHeat.name)}-top-20-tv.png`,
+      format: "tv",
+      width: TV_RESULT_WIDTH,
+      height: TV_RESULT_HEIGHT,
+    });
   };
 
   const filteredClassOptions = classOptions.filter(
@@ -1317,7 +1395,19 @@ export function CourseStep({
                       <Download />
                       Story
                     </Button>
+                    <Button
+                      variant="outline"
+                      disabled={entriesLoading}
+                      onClick={() => void tvTop20()}
+                    >
+                      <ImageIcon />
+                      PNG TV · Top 20
+                    </Button>
                   </div>
+                  <p className="mt-3 text-xs text-slate-500">
+                    Format demi-écran Full HD 960 × 1080 : placez deux courses
+                    côte à côte dans votre fichier télévision, sans recadrage.
+                  </p>
                 </article>
                 <article className="cross-panel p-5">
                   <Users className="text-[#1154b3]" />
@@ -1571,8 +1661,8 @@ export function CourseStep({
 
       <Dialog open={!!socialPreview} onOpenChange={open => { if (!open) setSocialPreview(undefined); }}>
         <DialogContent className="flex max-h-[calc(100dvh-2rem)] flex-col sm:max-w-2xl">
-          <DialogHeader><DialogTitle>Aperçu {socialPreview?.story ? "de la story" : "de la publication"}</DialogTitle><DialogDescription>Vérifiez le logo et le classement avant de télécharger le visuel.</DialogDescription></DialogHeader>
-          {socialPreview && <div className="min-h-0 overflow-auto rounded-xl bg-slate-100 p-3"><Image unoptimized src={socialPreview.dataUrl} alt="Visuel des résultats sur fond blanc" width={1080} height={socialPreview.story ? 1920 : 1080} className="mx-auto h-auto max-h-[65dvh] w-auto max-w-full bg-white object-contain" /></div>}
+          <DialogHeader><DialogTitle>Aperçu {socialPreview?.format === "story" ? "de la story" : socialPreview?.format === "tv" ? "du Top 20 TV" : "de la publication"}</DialogTitle><DialogDescription>{socialPreview?.format === "tv" ? "Ce PNG occupe exactement la moitié d’un écran Full HD. Vérifiez le logo, les couleurs et les 20 arrivées." : "Vérifiez le logo et le classement avant de télécharger le visuel."}</DialogDescription></DialogHeader>
+          {socialPreview && <div className="min-h-0 overflow-auto rounded-xl bg-slate-100 p-3"><Image unoptimized src={socialPreview.dataUrl} alt="Visuel des résultats sur fond blanc" width={socialPreview.width} height={socialPreview.height} className="mx-auto h-auto max-h-[65dvh] w-auto max-w-full bg-white object-contain" /></div>}
           <DialogFooter><Button variant="outline" onClick={() => setSocialPreview(undefined)}>Fermer</Button><Button onClick={() => { if (!socialPreview) return; const link = document.createElement("a"); link.download = socialPreview.fileName; link.href = socialPreview.dataUrl; link.click(); }}><Download />Télécharger le PNG</Button></DialogFooter>
         </DialogContent>
       </Dialog>
