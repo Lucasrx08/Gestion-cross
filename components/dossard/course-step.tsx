@@ -215,9 +215,16 @@ export function CourseStep({
   const [challengeError, setChallengeError] = useState("");
   const [challengeRevision, setChallengeRevision] = useState(0);
   const [challengeGrade, setChallengeGrade] = useState("all");
+  const [challengeExportGrade, setChallengeExportGrade] = useState("6e");
   const allOverallResults = overallChallenge(challengeCourses);
   const overallResults = overallChallenge(challengeCourses, challengeGrade);
   const challengeGrades = [...new Set(["6e", "5e", "4e", "3e", ...allOverallResults.map(result => gradeCategory(result.className))])].sort(compareCategories);
+  const challengeExportGrades = challengeGrades.filter(grade =>
+    allOverallResults.some(result => gradeCategory(result.className) === grade),
+  );
+  const resolvedChallengeExportGrade = challengeExportGrades.includes(challengeExportGrade)
+    ? challengeExportGrade
+    : (challengeExportGrades[0] ?? challengeExportGrade);
   const challengeGradeLabel = challengeGrade === "all" ? "Tous les niveaux" : (gradeLabels[challengeGrade] ?? challengeGrade);
   const activeHeatRef = useRef<string | undefined>(undefined);
   const selectedSectionRef = useRef<HTMLElement>(null);
@@ -738,9 +745,9 @@ export function CourseStep({
     printWindow(`${selectedHeat.name} - challenge interclasses`, `${documentHeader()}<h2>${esc(selectedHeat.name)} · Challenge de cette course</h2><p class="note">${esc(challengeRule)} Les effectifs sont indiqués entre parenthèses.</p><table><thead><tr><th>Rang</th><th>Classe</th><th>Score</th><th>Moyenne filles</th><th>Moyenne garçons</th><th>Dispensés exclus</th></tr></thead><tbody>${rows}</tbody></table>`);
   };
 
-  const printOverall = (complete = false) => {
-    const printable = complete ? allOverallResults : overallResults;
-    const label = complete ? "Tous les niveaux · lycée exclu" : challengeGradeLabel;
+  const printOverall = (grade = "all") => {
+    const printable = overallChallenge(challengeCourses, grade);
+    const label = grade === "all" ? "Tous les niveaux · lycée exclu" : (gradeLabels[grade] ?? grade);
     if (challengeLoading || challengeError || !printable.length) return;
     const rows = printable.map((result, index) => `<tr><td>${result.complete ? index + 1 : "—"}</td><td>${esc(result.className)}${result.complete ? "" : " · Provisoire"}</td><td>${formatChallengeScore(result.score)}</td><td>${formatChallengeScore(result.girlsRatio)} (${result.girls})</td><td>${formatChallengeScore(result.boysRatio)} (${result.boys})</td><td>${result.exempt}</td></tr>`).join("");
     printWindow(`${event.name} - challenge interclasses - ${label}`, `${documentHeader()}<h2>Challenge interclasses · ${esc(label)}</h2><p class="note">${esc(challengeRule)} Les classes de lycée sont exclues. Seules les courses terminées avec challenge activé sont incluses. Les effectifs sont indiqués entre parenthèses.</p><table><thead><tr><th>Rang</th><th>Classe</th><th>Score F + G</th><th>Moyenne filles</th><th>Moyenne garçons</th><th>Dispensés exclus</th></tr></thead><tbody>${rows}</tbody></table>`);
@@ -777,8 +784,16 @@ export function CourseStep({
     }
   };
 
-  const social = async (kind: "individual" | "classes", story = false, general = false) => {
-    const socialClassResults = general ? overallResults.filter(result => result.complete) : classResults.filter(result => result.score !== null);
+  const social = async (
+    kind: "individual" | "classes",
+    story = false,
+    general = false,
+    grade = challengeGrade,
+  ) => {
+    const socialClassResults = general
+      ? overallChallenge(challengeCourses, grade).filter(result => result.complete)
+      : classResults.filter(result => result.score !== null);
+    const socialGradeLabel = grade === "all" ? "Tous les niveaux" : (gradeLabels[grade] ?? grade);
     if (general && (challengeLoading || challengeError || !socialClassResults.length)) return;
     if (kind === "individual" && selectedGroups.length !== 1)
       return toast.error(
@@ -808,7 +823,7 @@ export function CourseStep({
       title: branding.title || event.name,
       subtitle: branding.subtitle || "",
       heading: kind === "classes" ? "CHALLENGE INTERCLASSES" : "TOP 10 · CLASSEMENT",
-      category: general ? `${challengeGradeLabel} · filles + garçons` : kind === "individual" ? selectedGroups[0]?.category || "" : selectedHeat!.name,
+      category: general ? `${socialGradeLabel} · filles + garçons` : kind === "individual" ? selectedGroups[0]?.category || "" : selectedHeat!.name,
       note: kind === "classes" ? "Moyenne filles + moyenne garçons · dispensés exclus" : selectedHeat!.name,
       primary: branding.primaryColor || "#1154b3",
       secondary: branding.secondaryColor || "#fed60b",
@@ -821,7 +836,7 @@ export function CourseStep({
           })),
     }, logo);
     const fileName =
-      `${general ? event.name + "-challenge-general" + (challengeGrade === "all" ? "" : "-" + challengeGrade) : selectedHeat!.name}-${kind}-${story ? "story" : "post"}.png`.replace(
+      `${general ? event.name + "-challenge-general" + (grade === "all" ? "" : "-" + grade) : selectedHeat!.name}-${kind}-${story ? "story" : "post"}.png`.replace(
         /\s+/g,
         "-",
       );
@@ -1192,10 +1207,6 @@ export function CourseStep({
             <h2 className="mt-1 text-[clamp(1.5rem,3vw,2rem)] font-bold tracking-tight">
               Programme du cross
             </h2>
-            <p className="mt-1 text-sm text-slate-500">
-              Préparez tout à l’avance. Le jour du cross, cliquez sur « Lancer »
-              à l’heure du départ.
-            </p>
           </div>
           <div className="flex flex-wrap gap-2">
             <Button disabled={loading} onClick={openCreate}>
@@ -1244,7 +1255,7 @@ export function CourseStep({
       {courseView === "challenge" && (
         <section className="cross-panel overflow-hidden">
           <div className="flex flex-wrap items-center justify-between gap-3 border-b p-5">
-          <div><h3 className="text-xl font-bold">Challenge interclasses général</h3><p className="mt-1 text-sm text-slate-500">Moyenne filles + moyenne garçons de la même classe, même dans des courses séparées. Les classes de lycée sont toujours exclues. {challengeCourses.length} course(s) terminée(s) avec challenge activé.</p><p className="mt-1 text-xs text-slate-500">{challengeRule}</p></div>
+          <div><h3 className="text-xl font-bold">Challenge interclasses général</h3><p className="mt-1 text-sm text-slate-500">{challengeCourses.length} course(s) prise(s) en compte · lycée exclu</p></div>
             <div className="flex flex-wrap gap-2"><Button variant="outline" disabled={challengeLoading} onClick={() => setChallengeRevision(value => value + 1)}>Actualiser le challenge</Button></div>
           </div>
           <div className="border-b bg-slate-50/60 p-4">
@@ -1252,7 +1263,7 @@ export function CourseStep({
               <Button size="sm" variant={challengeGrade === "all" ? "default" : "outline"} aria-pressed={challengeGrade === "all"} onClick={() => setChallengeGrade("all")}>Tous les niveaux</Button>
               {challengeGrades.map(grade => <Button key={grade} size="sm" variant={challengeGrade === grade ? "default" : "outline"} aria-pressed={challengeGrade === grade} onClick={() => setChallengeGrade(grade)}>{gradeLabels[grade] ?? grade}</Button>)}
             </div>
-            <p className="mt-2 text-xs text-slate-500">{challengeGradeLabel} · Le filtre s’applique à ce tableau et aux téléchargements proposés dans « Impression ». Les moyennes filles et garçons sont additionnées. Lycée exclu.</p>
+            <p className="mt-2 text-xs text-slate-500">{challengeGradeLabel} · moyenne filles + moyenne garçons · dispensés exclus · plus petit score gagnant</p>
           </div>
           {challengeLoading ? <p className="p-5" role="status">Calcul des moyennes filles et garçons…</p> : challengeError ? <p className="p-5 text-red-700" role="alert">{challengeError}</p> : !overallResults.length ? <p className="p-5 text-sm text-slate-500">{challengeGrade === "all" ? "Le challenge apparaîtra après la fin d’une course avec challenge activé." : `Aucun résultat de challenge pour le niveau ${challengeGradeLabel}.`}</p> : <div className="cross-scroll"><table className="cross-table w-full"><thead><tr className="bg-blue-50 text-left text-xs text-slate-500"><th>Rang</th><th>Classe</th><th>Score F + G</th><th>Moyenne filles</th><th>Moyenne garçons</th><th>Effectif F / G</th><th>Dispensés exclus</th><th>État</th></tr></thead><tbody>{overallResults.map((result, index) => <tr className="border-t" key={classKey(result.className)}><td className="font-bold">{result.complete ? index + 1 : "—"}</td><td className="font-bold">{result.className}</td><td className="font-bold">{formatChallengeScore(result.score)}</td><td>{formatChallengeScore(result.girlsRatio)}</td><td>{formatChallengeScore(result.boysRatio)}</td><td>{result.girls} / {result.boys}</td><td>{result.exempt}</td><td>{result.complete ? "Complet" : result.unknown ? "Sexe à renseigner" : "Provisoire"}</td></tr>)}</tbody></table></div>}
         </section>
@@ -1264,22 +1275,35 @@ export function CourseStep({
           <div className="mt-4 grid gap-3 md:grid-cols-2">
             <article className="rounded-2xl border bg-white p-4">
               <h3 className="font-bold">Toutes les courses</h3>
-              <p className="mt-1 text-xs text-slate-500">Tous les classements terminés dans un seul document.</p>
               <div className="mt-3 flex flex-wrap gap-2">
                 <Button size="sm" disabled={loading || printingDocument} onClick={() => void printAllIndividuals()}><Printer />PDF complet</Button>
                 <Button size="sm" variant="outline" disabled={loading} onClick={() => void downloadResults("individual", true)}><FileSpreadsheet />Excel complet</Button>
               </div>
             </article>
             <article className="rounded-2xl border bg-white p-4">
-              <h3 className="font-bold">Challenge interclasses complet</h3>
-              <p className="mt-1 text-xs text-slate-500">Toutes les classes et tous les niveaux, avec exclusion automatique du lycée.</p>
-              <div className="mt-3 flex flex-wrap gap-2">
-                <Button size="sm" disabled={challengeLoading || !!challengeError || !allOverallResults.length} onClick={() => printOverall(true)}><Printer />PDF complet</Button>
-                <Button size="sm" variant="outline" disabled={loading || challengeLoading || !!challengeError || !allOverallResults.length} onClick={() => void downloadResults("classes", true, "all")}><FileSpreadsheet />Excel complet</Button>
-                <Button size="sm" variant="outline" disabled={challengeLoading || !!challengeError || !overallResults.length} onClick={() => void social("classes", false, true)}><ImageIcon />Publication</Button>
-                <Button size="sm" variant="outline" disabled={challengeLoading || !!challengeError || !overallResults.length} onClick={() => void social("classes", true, true)}><Download />Story</Button>
+              <h3 className="font-bold">Challenge interclasses</h3>
+              <div className="mt-3 rounded-xl bg-slate-50 p-3">
+                <p className="text-sm font-bold">Challenge complet</p>
+                <div className="mt-2 flex flex-wrap gap-2">
+                  <Button size="sm" disabled={challengeLoading || !!challengeError || !allOverallResults.length} onClick={() => printOverall("all")}><Printer />PDF</Button>
+                  <Button size="sm" variant="outline" disabled={loading || challengeLoading || !!challengeError || !allOverallResults.length} onClick={() => void downloadResults("classes", true, "all")}><FileSpreadsheet />Excel</Button>
+                  <Button size="sm" variant="outline" disabled={challengeLoading || !!challengeError || !allOverallResults.length} onClick={() => void social("classes", false, true, "all")}><ImageIcon />Publication</Button>
+                  <Button size="sm" variant="outline" disabled={challengeLoading || !!challengeError || !allOverallResults.length} onClick={() => void social("classes", true, true, "all")}><Download />Story</Button>
+                </div>
               </div>
-              <p className="mt-2 text-xs text-slate-500">Visuels : filtre actif {challengeGradeLabel}. PDF/Excel : challenge complet.</p>
+              <div className="mt-3 rounded-xl border p-3">
+                <p className="text-sm font-bold">Par niveau</p>
+                <Select value={resolvedChallengeExportGrade} onValueChange={setChallengeExportGrade}>
+                  <SelectTrigger className="mt-2 w-full"><SelectValue /></SelectTrigger>
+                  <SelectContent>{challengeExportGrades.map(grade => <SelectItem key={grade} value={grade}>{gradeLabels[grade] ?? grade}</SelectItem>)}</SelectContent>
+                </Select>
+                <div className="mt-2 flex flex-wrap gap-2">
+                  <Button size="sm" disabled={challengeLoading || !!challengeError || !challengeExportGrades.length} onClick={() => printOverall(resolvedChallengeExportGrade)}><Printer />PDF</Button>
+                  <Button size="sm" variant="outline" disabled={loading || challengeLoading || !!challengeError || !challengeExportGrades.length} onClick={() => void downloadResults("classes", true, resolvedChallengeExportGrade)}><FileSpreadsheet />Excel</Button>
+                  <Button size="sm" variant="outline" disabled={challengeLoading || !!challengeError || !challengeExportGrades.length} onClick={() => void social("classes", false, true, resolvedChallengeExportGrade)}><ImageIcon />Publication</Button>
+                  <Button size="sm" variant="outline" disabled={challengeLoading || !!challengeError || !challengeExportGrades.length} onClick={() => void social("classes", true, true, resolvedChallengeExportGrade)}><Download />Story</Button>
+                </div>
+              </div>
             </article>
           </div>
         </section>
@@ -1613,10 +1637,6 @@ export function CourseStep({
                   <h4 className="mt-2 text-lg font-bold">
                     Classement individuel
                   </h4>
-                  <p className="text-sm text-slate-500">
-                    Rang d’arrivée commun et classements filles/garçons par niveau (CP,
-                    CE1, collège, lycée…), avec les classes A/B regroupées.
-                  </p>
                   <div className="mt-4 flex flex-wrap gap-2">
                     <Select value={visibleCategory} onValueChange={setResultCategory}><SelectTrigger className="w-full"><SelectValue /></SelectTrigger><SelectContent><SelectItem value="all">Toutes les catégories</SelectItem>{gradeGroups.map(group => <SelectItem key={group.category} value={group.category}>{group.category}</SelectItem>)}</SelectContent></Select>
                     <Button disabled={entriesLoading} onClick={printIndividual}>
@@ -1657,19 +1677,14 @@ export function CourseStep({
                       TV · classements complets
                     </Button>
                   </div>
-                  <p className="mt-3 text-xs text-slate-500">
-                    Deux catégories côte à côte en Full HD. Au-delà de 20 élèves,
-                    les écrans suivants sont créés automatiquement jusqu’au classement complet.
-                  </p>
+                  <p className="mt-3 text-xs text-slate-500">TV : deux catégories par écran, classement complet.</p>
                 </article>
                 <article className="rounded-2xl border bg-white p-4">
                   <Users className="text-[#1154b3]" />
                   <h4 className="mt-2 text-lg font-bold">
                     Challenge de cette course
                   </h4>
-                  <p className="text-sm text-slate-500">
-                    {challengeRule} Le classement général regroupe les points et effectifs des courses terminées avant de calculer les moyennes.
-                  </p>
+                  <p className="text-sm text-slate-500">Filles + garçons · dispensés exclus.</p>
                   <div className="mt-4 flex flex-wrap gap-2">
                     <Button
                       disabled={!classResults.length || entriesLoading}
@@ -1711,10 +1726,7 @@ export function CourseStep({
                   <h4 className="mt-2 text-lg font-bold">
                     Télévision · deux courses côte à côte
                   </h4>
-                  <p className="text-sm text-slate-500">
-                    La course sélectionnée sera placée à gauche. Choisissez la
-                    course de droite pour obtenir un PNG Full HD 1920 × 1080 prêt à diffuser.
-                  </p>
+                  <p className="text-sm text-slate-500">PNG Full HD prêt à diffuser.</p>
                   <div className="mt-4 space-y-3">
                     <div className="rounded-xl bg-slate-50 p-3 text-sm">
                       <span className="text-slate-500">À gauche :</span>{" "}
@@ -1751,7 +1763,7 @@ export function CourseStep({
                 <article className="rounded-2xl border bg-white p-4">
                   <Printer className="text-[#1154b3]" />
                   <h4 className="mt-2 text-lg font-bold">Feuille de secours</h4>
-                  <p className="text-sm text-slate-500">Une page A4 avec l’en-tête et 30 lignes : ordre d’arrivée et dossard.</p>
+                  <p className="text-sm text-slate-500">30 lignes : arrivée + dossard.</p>
                   <Button className="mt-4" size="sm" variant="outline" disabled={entriesLoading} onClick={printBackupSheet}><Printer />Imprimer / PDF</Button>
                 </article>
               </div>
