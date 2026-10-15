@@ -83,6 +83,9 @@ assert.equal(overallChallenge([{ heat, entries: girls }])[0].complete, false, "P
 const unknown = { ...entry(302, "finished", "6e A", 6), participant: { ...entry(302, "finished").participant, class_name: "6e A", sex: "" } };
 const invalid = overallChallenge([{ heat, entries: [...girls, ...boys, unknown] }]).find(r => r.className === "6e A")!;
 assert.equal(invalid.score, null, "Un sexe inconnu ne peut produire un score validé");
+const lycéeEntries = [entry(401, "finished", "Terminale ST2S", 1), boy(entry(402, "finished", "2nde A", 2))];
+assert.deepEqual(buildChallenge(lycéeEntries, ["Terminale ST2S", "2nde A"]), [], "Le lycée est exclu du challenge d’une course mixte");
+assert.deepEqual(overallChallenge([{ heat: { ...heat, selected_classes: ["Terminale ST2S", "2nde A"] }, entries: lycéeEntries }]), [], "Le lycée est exclu du challenge général");
 const book = await buildRaceWorkbook(courseData, "classes");
 const XLSX = await import("xlsx");
 const general = XLSX.utils.sheet_to_json<unknown[]>(book.Sheets["Classement général"], { header: 1, blankrows: true });

@@ -157,7 +157,9 @@ export function buildChallenge(entries: HeatEntry[], classes: string[]) {
     const key = classKey(value);
     if (key && !labels.has(key)) labels.set(key, value.trim());
   });
-  return [...labels].map(([key, className]) => {
+  return [...labels]
+    .filter(([, className]) => gradeCategory(className) !== "Lycée")
+    .map(([key, className]) => {
     const members = entries.filter(entry => classKey(entry.participant.class_name) === key);
     const totals = { girls: 0, boys: 0, unknown: 0, girlsPoints: 0, boysPoints: 0, points: 0, members: 0, exempt: 0, pending: 0 };
     for (const entry of members) {

@@ -195,6 +195,8 @@ export function CourseStep({
   const scheduledInputRef = useRef<HTMLInputElement>(null);
   const planRevisionRef = useRef(0);
   const [editingHeat, setEditingHeat] = useState<CloudHeat>();
+  const [reorderEntry, setReorderEntry] = useState<HeatEntry>();
+  const [targetPosition, setTargetPosition] = useState("");
   const [ownerLoading, setOwnerLoading] = useState(true);
   const [ownerError, setOwnerError] = useState("");
   const [entriesLoading, setEntriesLoading] = useState(false);
@@ -431,8 +433,34 @@ export function CourseStep({
           ? isFemale(participant.sex)
           : isMale(participant.sex))),
   );
+  const metadataOnlyEdit = Boolean(editingHeat && editingHeat.status !== "draft");
   const createHeat = async () => {
     if (!cloudEvent) return;
+    const requestedTime = scheduledInputRef.current?.value ?? scheduledTime;
+    if (!heatName.trim()) return toast.error("Indiquez un nom de course.");
+    if (requestedTime && !/^([01]\d|2[0-3]):[0-5]\d$/.test(requestedTime)) return toast.error("Indiquez un horaire valide (HH:MM).");
+    if (editingHeat && metadataOnlyEdit) {
+      setLoading(true);
+      try {
+        const result = await ownerApi<{ heat: CloudHeat }>("update_heat_metadata", {
+          heatId: editingHeat.id,
+          name: heatName.trim(),
+          scheduledTime: requestedTime || null,
+          challengeEnabled,
+        });
+        const saved = await ownerApi<HeatResponse>("heat_entries", { heatId: result.heat.id });
+        setHeats(items => items.map(item => item.id === saved.heat.id ? { ...item, ...saved.heat } : item));
+        if (activeHeatRef.current === saved.heat.id) setEntries(saved.entries);
+        setCreateOpen(false);
+        resetCreate();
+        toast.success(`Course modifiée · ${requestedTime ? `horaire confirmé à ${requestedTime}` : "horaire libre confirmé"}. Les arrivées sont conservées.`);
+      } catch (error) {
+        toast.error(raceErrorMessage(error));
+      } finally {
+        setLoading(false);
+      }
+      return;
+    }
     const selectedOptions = classOptions.filter((option) =>
       selectedClassKeys.has(option.key),
     );
@@ -460,8 +488,6 @@ export function CourseStep({
     );
     if (!participants.length)
       return toast.error("Aucun élève ne correspond à cette sélection.");
-    const requestedTime = scheduledInputRef.current?.value ?? scheduledTime;
-    if (requestedTime && !/^([01]\d|2[0-3]):[0-5]\d$/.test(requestedTime)) return toast.error("Indiquez un horaire valide (HH:MM).");
     setLoading(true);
     planRevisionRef.current++;
     try {
@@ -527,21 +553,26 @@ export function CourseStep({
       setLoading(false);
     }
   };
-  const finish = async () => {
+  const finish = async (heat = selectedHeat) => {
     if (
-      !selectedHeatId ||
+      !heat ||
       !confirm(
-        "Terminer la course ? Les élèves encore à courir seront classés non-finisseurs.",
+        `Terminer « ${heat.name} » ? Les élèves encore à courir seront classés non-finisseurs.`,
       )
     )
       return;
     try {
-      await ownerApi("finish_heat", { heatId: selectedHeatId });
+      setLoading(true);
+      setSelectedHeatId(heat.id);
+      activeHeatRef.current = heat.id;
+      await ownerApi("finish_heat", { heatId: heat.id });
       await refreshOwner();
-      await refreshEntries();
+      await refreshEntries(heat.id);
       toast.success("Course terminée. Les résultats sont prêts.");
     } catch (error) {
       toast.error(raceErrorMessage(error));
+    } finally {
+      setLoading(false);
     }
   };
   const changeStatus = async (
@@ -579,6 +610,24 @@ export function CourseStep({
       await refreshEntries();
     } catch (error) {
       toast.error(raceErrorMessage(error));
+    }
+  };
+  const moveToPosition = async () => {
+    const position = Number(targetPosition);
+    if (!reorderEntry || !Number.isInteger(position) || position < 1 || position > ranked.length) {
+      return toast.error(`Indiquez une place entre 1 et ${ranked.length}.`);
+    }
+    setLoading(true);
+    try {
+      await ownerApi("reorder_finish", { entryId: reorderEntry.id, position });
+      await refreshEntries();
+      setReorderEntry(undefined);
+      setTargetPosition("");
+      toast.success(`Élève déplacé à la place ${position}.`);
+    } catch (error) {
+      toast.error(raceErrorMessage(error));
+    } finally {
+      setLoading(false);
     }
   };
   const deleteHeat = async () => {
@@ -684,15 +733,18 @@ export function CourseStep({
     printWindow(`${selectedHeat.name} - challenge interclasses`, `${documentHeader()}<h2>${esc(selectedHeat.name)} · Challenge de cette course</h2><p class="note">${esc(challengeRule)} Les effectifs sont indiqués entre parenthèses.</p><table><thead><tr><th>Rang</th><th>Classe</th><th>Score</th><th>Moyenne filles</th><th>Moyenne garçons</th><th>Dispensés exclus</th></tr></thead><tbody>${rows}</tbody></table>`);
   };
 
-  const printOverall = () => {
-    if (challengeLoading || challengeError || !overallResults.length) return;
-    const rows = overallResults.map((result, index) => `<tr><td>${result.complete ? index + 1 : "—"}</td><td>${esc(result.className)}${result.complete ? "" : " · Provisoire"}</td><td>${formatChallengeScore(result.score)}</td><td>${formatChallengeScore(result.girlsRatio)} (${result.girls})</td><td>${formatChallengeScore(result.boysRatio)} (${result.boys})</td><td>${result.exempt}</td></tr>`).join("");
-    printWindow(`${event.name} - challenge interclasses - ${challengeGradeLabel}`, `${documentHeader()}<h2>Challenge interclasses · ${esc(challengeGradeLabel)}</h2><p class="note">${esc(challengeRule)} Seules les courses terminées avec challenge activé sont incluses. Les effectifs sont indiqués entre parenthèses.</p><table><thead><tr><th>Rang</th><th>Classe</th><th>Score F + G</th><th>Moyenne filles</th><th>Moyenne garçons</th><th>Dispensés exclus</th></tr></thead><tbody>${rows}</tbody></table>`);
+  const printOverall = (complete = false) => {
+    const printable = complete ? allOverallResults : overallResults;
+    const label = complete ? "Tous les niveaux · lycée exclu" : challengeGradeLabel;
+    if (challengeLoading || challengeError || !printable.length) return;
+    const rows = printable.map((result, index) => `<tr><td>${result.complete ? index + 1 : "—"}</td><td>${esc(result.className)}${result.complete ? "" : " · Provisoire"}</td><td>${formatChallengeScore(result.score)}</td><td>${formatChallengeScore(result.girlsRatio)} (${result.girls})</td><td>${formatChallengeScore(result.boysRatio)} (${result.boys})</td><td>${result.exempt}</td></tr>`).join("");
+    printWindow(`${event.name} - challenge interclasses - ${label}`, `${documentHeader()}<h2>Challenge interclasses · ${esc(label)}</h2><p class="note">${esc(challengeRule)} Les classes de lycée sont exclues. Seules les courses terminées avec challenge activé sont incluses. Les effectifs sont indiqués entre parenthèses.</p><table><thead><tr><th>Rang</th><th>Classe</th><th>Score F + G</th><th>Moyenne filles</th><th>Moyenne garçons</th><th>Dispensés exclus</th></tr></thead><tbody>${rows}</tbody></table>`);
   };
 
   const downloadResults = async (
     kind: "individual" | "classes",
     all = false,
+    gradeOverride?: string,
   ) => {
     const courses = (all ? heats : selectedHeat ? [selectedHeat] : []).filter(
       (heat) =>
@@ -711,7 +763,7 @@ export function CourseStep({
           return { heat: result.heat, entries: result.entries };
         }),
       );
-      await exportRaceResults(data, all ? event.name : courses[0].name, kind, all && kind === "classes" ? challengeGrade : "all");
+      await exportRaceResults(data, all ? event.name : courses[0].name, kind, all && kind === "classes" ? (gradeOverride ?? challengeGrade) : "all");
       toast.success("Résultats téléchargés au format Excel.");
     } catch (error) {
       toast.error(raceErrorMessage(error));
@@ -1089,10 +1141,10 @@ export function CourseStep({
       <nav aria-label="Rubriques des courses" className="grid grid-cols-2 gap-2 rounded-2xl border bg-white p-2 lg:grid-cols-5">
         {([
           { value: "manage", label: "Gestion des courses" },
-          { value: "results", label: "Résultats de la course" },
-          { value: "challenge", label: "Challenge interclasses" },
-          { value: "exports", label: "Impressions & publications" },
           { value: "arrival", label: "Ordre d’arrivée commun" },
+          { value: "results", label: "Résultats" },
+          { value: "challenge", label: "Challenge interclasses" },
+          { value: "exports", label: "Impression" },
         ] as const).map(view => <Button key={view.value} variant={courseView === view.value ? "default" : "ghost"} aria-current={courseView === view.value ? "page" : undefined} className="h-auto min-h-11 whitespace-normal" onClick={() => setCourseView(view.value)}>{view.label}</Button>)}
       </nav>
       <div hidden={courseView !== "manage"} className="space-y-5">
@@ -1127,9 +1179,10 @@ export function CourseStep({
         selectedId={selectedHeatId}
         busy={loading}
         onStart={(heat) => void start(heat)}
+        onFinish={(heat) => void finish(heat)}
         onEdit={editHeat}
         onOpen={(heat) => {
-          setCourseView(heat.status === "draft" ? "manage" : "results");
+          setCourseView(heat.status === "finished" ? "results" : "manage");
           if (heat.id === selectedHeatId)
             selectedSectionRef.current?.scrollIntoView({
               behavior: "smooth",
@@ -1155,7 +1208,7 @@ export function CourseStep({
       {courseView === "challenge" && (
         <section className="cross-panel overflow-hidden">
           <div className="flex flex-wrap items-center justify-between gap-3 border-b p-5">
-            <div><h3 className="text-xl font-bold">Challenge interclasses général</h3><p className="mt-1 text-sm text-slate-500">Moyenne filles + moyenne garçons de la même classe, même dans des courses séparées. {challengeCourses.length} course(s) terminée(s) avec challenge activé.</p><p className="mt-1 text-xs text-slate-500">{challengeRule}</p></div>
+          <div><h3 className="text-xl font-bold">Challenge interclasses général</h3><p className="mt-1 text-sm text-slate-500">Moyenne filles + moyenne garçons de la même classe, même dans des courses séparées. Les classes de lycée sont toujours exclues. {challengeCourses.length} course(s) terminée(s) avec challenge activé.</p><p className="mt-1 text-xs text-slate-500">{challengeRule}</p></div>
             <div className="flex flex-wrap gap-2"><Button variant="outline" disabled={challengeLoading} onClick={() => setChallengeRevision(value => value + 1)}>Actualiser le challenge</Button></div>
           </div>
           <div className="border-b bg-slate-50/60 p-4">
@@ -1163,95 +1216,36 @@ export function CourseStep({
               <Button size="sm" variant={challengeGrade === "all" ? "default" : "outline"} aria-pressed={challengeGrade === "all"} onClick={() => setChallengeGrade("all")}>Tous les niveaux</Button>
               {challengeGrades.map(grade => <Button key={grade} size="sm" variant={challengeGrade === grade ? "default" : "outline"} aria-pressed={challengeGrade === grade} onClick={() => setChallengeGrade(grade)}>{gradeLabels[grade] ?? grade}</Button>)}
             </div>
-            <p className="mt-2 text-xs text-slate-500">{challengeGradeLabel} · Le filtre s’applique à ce tableau et aux téléchargements proposés dans « Impressions & publications ». Les moyennes filles et garçons sont additionnées.</p>
+            <p className="mt-2 text-xs text-slate-500">{challengeGradeLabel} · Le filtre s’applique à ce tableau et aux téléchargements proposés dans « Impression ». Les moyennes filles et garçons sont additionnées. Lycée exclu.</p>
           </div>
           {challengeLoading ? <p className="p-5" role="status">Calcul des moyennes filles et garçons…</p> : challengeError ? <p className="p-5 text-red-700" role="alert">{challengeError}</p> : !overallResults.length ? <p className="p-5 text-sm text-slate-500">{challengeGrade === "all" ? "Le challenge apparaîtra après la fin d’une course avec challenge activé." : `Aucun résultat de challenge pour le niveau ${challengeGradeLabel}.`}</p> : <div className="cross-scroll"><table className="cross-table w-full"><thead><tr className="bg-blue-50 text-left text-xs text-slate-500"><th>Rang</th><th>Classe</th><th>Score F + G</th><th>Moyenne filles</th><th>Moyenne garçons</th><th>Effectif F / G</th><th>Dispensés exclus</th><th>État</th></tr></thead><tbody>{overallResults.map((result, index) => <tr className="border-t" key={classKey(result.className)}><td className="font-bold">{result.complete ? index + 1 : "—"}</td><td className="font-bold">{result.className}</td><td className="font-bold">{formatChallengeScore(result.score)}</td><td>{formatChallengeScore(result.girlsRatio)}</td><td>{formatChallengeScore(result.boysRatio)}</td><td>{result.girls} / {result.boys}</td><td>{result.exempt}</td><td>{result.complete ? "Complet" : result.unknown ? "Sexe à renseigner" : "Provisoire"}</td></tr>)}</tbody></table></div>}
         </section>
       )}
       {courseView === "exports" && heats.some((heat) => heat.status === "finished") && (
-        <section className="cross-panel p-5 sm:p-6">
+        <section className="cross-panel p-4 sm:p-5">
           <p className="cross-eyebrow">Centre de téléchargement</p>
-          <h2 className="mt-1 text-2xl font-bold">Toutes les courses</h2>
-          <p className="mt-1 text-sm text-slate-500">
-            Regroupez toutes les courses terminées dans un seul PDF ou un seul fichier Excel.
-          </p>
-          <div className="mt-4 flex flex-wrap gap-2">
-          <Button
-            disabled={loading || printingDocument}
-            onClick={() => void printAllIndividuals()}
-          >
-            <Printer />
-            PDF · toutes les courses
-          </Button>
-          <Button
-            variant="outline"
-            disabled={loading}
-            onClick={() => void downloadResults("individual", true)}
-          >
-            <FileSpreadsheet />
-            Excel · toutes les courses
-          </Button>
-          {heats.some(
-            (heat) => heat.status === "finished" && heat.challenge_enabled,
-          ) && (
-            <Button
-              variant="outline"
-              disabled={loading}
-              onClick={() => void downloadResults("classes", true)}
-            >
-              <FileSpreadsheet />
-              Excel · tous les challenges
-            </Button>
-          )}
+          <h2 className="mt-1 text-2xl font-bold">Impressions et publications</h2>
+          <div className="mt-4 grid gap-3 md:grid-cols-2">
+            <article className="rounded-2xl border bg-white p-4">
+              <h3 className="font-bold">Toutes les courses</h3>
+              <p className="mt-1 text-xs text-slate-500">Tous les classements terminés dans un seul document.</p>
+              <div className="mt-3 flex flex-wrap gap-2">
+                <Button size="sm" disabled={loading || printingDocument} onClick={() => void printAllIndividuals()}><Printer />PDF complet</Button>
+                <Button size="sm" variant="outline" disabled={loading} onClick={() => void downloadResults("individual", true)}><FileSpreadsheet />Excel complet</Button>
+              </div>
+            </article>
+            <article className="rounded-2xl border bg-white p-4">
+              <h3 className="font-bold">Challenge interclasses complet</h3>
+              <p className="mt-1 text-xs text-slate-500">Toutes les classes et tous les niveaux, avec exclusion automatique du lycée.</p>
+              <div className="mt-3 flex flex-wrap gap-2">
+                <Button size="sm" disabled={challengeLoading || !!challengeError || !allOverallResults.length} onClick={() => printOverall(true)}><Printer />PDF complet</Button>
+                <Button size="sm" variant="outline" disabled={loading || challengeLoading || !!challengeError || !allOverallResults.length} onClick={() => void downloadResults("classes", true, "all")}><FileSpreadsheet />Excel complet</Button>
+                <Button size="sm" variant="outline" disabled={challengeLoading || !!challengeError || !overallResults.length} onClick={() => void social("classes", false, true)}><ImageIcon />Publication</Button>
+                <Button size="sm" variant="outline" disabled={challengeLoading || !!challengeError || !overallResults.length} onClick={() => void social("classes", true, true)}><Download />Story</Button>
+              </div>
+              <p className="mt-2 text-xs text-slate-500">Visuels : filtre actif {challengeGradeLabel}. PDF/Excel : challenge complet.</p>
+            </article>
           </div>
-        </section>
-      )}
-      {courseView === "exports" && heats.some(
-        (heat) => heat.status === "finished" && heat.challenge_enabled,
-      ) && (
-        <section className="cross-panel p-5 sm:p-6">
-          <p className="cross-eyebrow">Tous les challenges</p>
-          <h2 className="mt-1 text-2xl font-bold">Challenge interclasses général</h2>
-          <p className="mt-1 text-sm text-slate-500">
-            Toutes les courses avec challenge activé. Le filtre choisi dans
-            l’onglet « Challenge interclasses » est appliqué aux quatre formats.
-          </p>
-          <div className="mt-4 flex flex-wrap gap-2">
-            <Button
-              disabled={challengeLoading || !!challengeError || !overallResults.length}
-              onClick={printOverall}
-            >
-              <Printer />
-              PDF général
-            </Button>
-            <Button
-              variant="outline"
-              disabled={loading || challengeLoading || !!challengeError || !overallResults.length}
-              onClick={() => void downloadResults("classes", true)}
-            >
-              <FileSpreadsheet />
-              Excel général
-            </Button>
-            <Button
-              variant="outline"
-              disabled={challengeLoading || !!challengeError || !overallResults.length}
-              onClick={() => void social("classes", false, true)}
-            >
-              <ImageIcon />
-              Publication générale
-            </Button>
-            <Button
-              variant="outline"
-              disabled={challengeLoading || !!challengeError || !overallResults.length}
-              onClick={() => void social("classes", true, true)}
-            >
-              <Download />
-              Story générale
-            </Button>
-          </div>
-          <p className="mt-3 text-xs text-slate-500">
-            Filtre actif : {challengeGradeLabel}.
-          </p>
         </section>
       )}
 
@@ -1259,7 +1253,7 @@ export function CourseStep({
         <>
           <section
             ref={selectedSectionRef}
-            className="scroll-mt-24 cross-panel p-5 sm:p-6"
+            className={`scroll-mt-24 cross-panel p-5 sm:p-6 ${courseView === "exports" ? "hidden" : ""}`}
           >
             <div className="flex flex-col gap-4 xl:flex-row xl:items-center xl:justify-between">
               <div>
@@ -1278,7 +1272,7 @@ export function CourseStep({
                   engagé(s)
                 </p>
               </div>
-              <div className={`flex flex-wrap gap-2 ${courseView !== "manage" ? "hidden" : ""}`}>
+              <div className={`flex flex-wrap gap-2 ${courseView !== "manage" && courseView !== "results" ? "hidden" : ""}`}>
                 {selectedHeat.status === "draft" && (
                   <>
                     <Button disabled={loading} onClick={() => void start()}>
@@ -1311,12 +1305,30 @@ export function CourseStep({
                       Ajouter un poste
                     </Button>
                     <Button
+                      variant="outline"
+                      disabled={loading}
+                      onClick={() => editHeat(selectedHeat)}
+                    >
+                      <Pencil />
+                      Modifier
+                    </Button>
+                    <Button
                       className="bg-red-600 hover:bg-red-700"
-                      onClick={() => void finish()}
+                      onClick={() => void finish(selectedHeat)}
                     >
                       Terminer
                     </Button>
                   </>
+                )}
+                {selectedHeat.status === "finished" && (
+                  <Button
+                    variant="outline"
+                    disabled={loading}
+                    onClick={() => editHeat(selectedHeat)}
+                  >
+                    <Pencil />
+                    Modifier
+                  </Button>
                 )}
                 <Button
                   variant="outline"
@@ -1501,6 +1513,18 @@ export function CourseStep({
                           <td className="p-3">
                             <div className="flex justify-end gap-1">
                               <Button
+                                size="sm"
+                                variant="outline"
+                                disabled={selectedHeat.status !== "finished"}
+                                onClick={() => {
+                                  setReorderEntry(entry);
+                                  setTargetPosition(String(entry.finish_position ?? ""));
+                                }}
+                              >
+                                <Pencil />
+                                Place
+                              </Button>
+                              <Button
                                 size="icon-sm"
                                 variant="ghost"
                                 disabled={
@@ -1541,25 +1565,14 @@ export function CourseStep({
             </section>
           )}
 
-          {courseView === "exports" && (
-            <section className="cross-panel p-5 sm:p-6">
-              <h3 className="text-lg font-bold">Feuille de secours · {selectedHeat.name}</h3>
-              <p className="mt-1 text-sm text-slate-500">Une seule page A4 avec l’en-tête de la course et 30 lignes vierges : ordre d’arrivée et numéro de dossard. Imprimez plusieurs exemplaires si nécessaire.</p>
-              <Button className="mt-4" variant="outline" disabled={entriesLoading} onClick={printBackupSheet}><Printer />Imprimer la feuille de secours</Button>
-            </section>
-          )}
           {courseView === "exports" && selectedHeat.status === "finished" && (
-            <section className="cross-panel p-5 sm:p-6">
+            <section className="cross-panel p-4 sm:p-5">
               <p className="text-xs font-bold uppercase tracking-widest text-[#1154b3]">
                 Course sélectionnée
               </p>
-              <h3 className="mt-1 text-2xl font-bold">Tous les formats disponibles</h3>
-              <p className="mt-1 text-sm text-slate-500">
-                Choisissez une catégorie si nécessaire, puis téléchargez le PDF,
-                l’Excel, la publication, la story ou le visuel TV souhaité.
-              </p>
-              <div className="mt-5 grid gap-4 lg:grid-cols-2">
-                <article className="cross-panel p-5">
+              <h3 className="mt-1 text-xl font-bold">Formats de la course sélectionnée</h3>
+              <div className="mt-4 grid gap-3 md:grid-cols-2 xl:grid-cols-3">
+                <article className="rounded-2xl border bg-white p-4">
                   <Medal className="text-[#1154b3]" />
                   <h4 className="mt-2 text-lg font-bold">
                     Classement individuel
@@ -1613,7 +1626,7 @@ export function CourseStep({
                     côte à côte dans votre fichier télévision, sans recadrage.
                   </p>
                 </article>
-                <article className="cross-panel p-5">
+                <article className="rounded-2xl border bg-white p-4">
                   <Users className="text-[#1154b3]" />
                   <h4 className="mt-2 text-lg font-bold">
                     Challenge de cette course
@@ -1657,7 +1670,7 @@ export function CourseStep({
                     </Button>
                   </div>
                 </article>
-                <article className="cross-panel p-5">
+                <article className="rounded-2xl border bg-white p-4">
                   <ImageIcon className="text-[#1154b3]" />
                   <h4 className="mt-2 text-lg font-bold">
                     Télévision · deux courses côte à côte
@@ -1699,6 +1712,12 @@ export function CourseStep({
                     </Button>
                   </div>
                 </article>
+                <article className="rounded-2xl border bg-white p-4">
+                  <Printer className="text-[#1154b3]" />
+                  <h4 className="mt-2 text-lg font-bold">Feuille de secours</h4>
+                  <p className="text-sm text-slate-500">Une page A4 avec l’en-tête et 30 lignes : ordre d’arrivée et dossard.</p>
+                  <Button className="mt-4" size="sm" variant="outline" disabled={entriesLoading} onClick={printBackupSheet}><Printer />Imprimer / PDF</Button>
+                </article>
               </div>
               {classResults.length > 0 && (
                 <div className="mt-5 rounded-2xl bg-slate-50 p-4">
@@ -1730,12 +1749,13 @@ export function CourseStep({
           <DialogHeader className="shrink-0 px-6 pr-16 pt-6">
             <DialogTitle>
               {editingHeat
-                ? "Modifier la course préparée"
+                ? "Modifier la course"
                 : "Préparer une course"}
             </DialogTitle>
             <DialogDescription>
-              Enregistrez les classes et les réglages maintenant. La course
-              attendra votre clic sur « Lancer » le jour du cross.
+              {metadataOnlyEdit
+                ? "Modifiez le nom, l’horaire ou le challenge. Les classes, les participants et les arrivées restent verrouillés et sont conservés."
+                : "Enregistrez les classes et les réglages maintenant. La course attendra votre clic sur « Lancer » le jour du cross."}
             </DialogDescription>
           </DialogHeader>
           <div className="min-h-0 flex-1 overflow-y-auto px-6 pb-4">
@@ -1750,7 +1770,7 @@ export function CourseStep({
               </div>
               <div>
                 <Label>Sexe</Label>
-                <Select value={sexFilter} onValueChange={setSexFilter}>
+                <Select value={sexFilter} onValueChange={setSexFilter} disabled={metadataOnlyEdit}>
                   <SelectTrigger>
                     <SelectValue />
                   </SelectTrigger>
@@ -1818,7 +1838,12 @@ export function CourseStep({
                 {challengeRule}
               </p>
             )}
-            <div className="sticky top-0 z-10 -mx-1 bg-white pb-3 pt-1">
+            {metadataOnlyEdit && (
+              <p className="mb-4 rounded-xl border border-blue-200 bg-blue-50 p-3 text-sm text-blue-900">
+                Modification sûre : les classes et les élèves ne peuvent plus changer après le départ. Seuls le nom, l’horaire et l’activation du challenge sont modifiables.
+              </p>
+            )}
+            <div className={`sticky top-0 z-10 -mx-1 bg-white pb-3 pt-1 ${metadataOnlyEdit ? "hidden" : ""}`}>
               <div className="flex flex-col gap-2 sm:flex-row sm:items-center">
                 <div className="relative flex-1">
                   <Search className="absolute left-3 top-1/2 size-4 -translate-y-1/2 text-slate-400" />
@@ -1854,7 +1879,7 @@ export function CourseStep({
                 {selectedClassKeys.size} classe(s) sélectionnée(s)
               </p>
             </div>
-            <div className="space-y-5">
+            <div className={`space-y-5 ${metadataOnlyEdit ? "hidden" : ""}`}>
               {[...groupedOptions.entries()].map(([group, options]) => (
                 <section key={group}>
                   <h4 className="mb-2 text-xs font-bold uppercase tracking-widest text-[#1154b3]">
@@ -1890,7 +1915,7 @@ export function CourseStep({
             </Button>
             <Button
               disabled={
-                loading || !heatName.trim() || chosenParticipants.length === 0
+                loading || !heatName.trim() || (!metadataOnlyEdit && chosenParticipants.length === 0)
               }
               onClick={() => void createHeat()}
             >
@@ -1901,6 +1926,25 @@ export function CourseStep({
                   ? "Enregistrer les modifications"
                   : "Enregistrer la course"}
             </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
+      <Dialog open={!!reorderEntry} onOpenChange={open => { if (!open) { setReorderEntry(undefined); setTargetPosition(""); } }}>
+        <DialogContent className="sm:max-w-md">
+          <DialogHeader>
+            <DialogTitle>Modifier la place d’arrivée</DialogTitle>
+            <DialogDescription>
+              {reorderEntry ? `${reorderEntry.participant.first_name} ${reorderEntry.participant.last_name.toUpperCase()} · place actuelle ${reorderEntry.finish_position}` : ""}
+            </DialogDescription>
+          </DialogHeader>
+          <div>
+            <Label htmlFor="target-position">Nouvelle place (1 à {ranked.length})</Label>
+            <Input id="target-position" type="number" min={1} max={ranked.length} value={targetPosition} onChange={event => setTargetPosition(event.target.value)} onKeyDown={event => { if (event.key === "Enter") void moveToPosition(); }} autoFocus />
+          </div>
+          <DialogFooter>
+            <Button variant="outline" onClick={() => setReorderEntry(undefined)}>Annuler</Button>
+            <Button disabled={loading} onClick={() => void moveToPosition()}>Déplacer l’élève</Button>
           </DialogFooter>
         </DialogContent>
       </Dialog>

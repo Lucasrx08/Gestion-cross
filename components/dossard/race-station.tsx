@@ -77,7 +77,7 @@ export function RaceStation({
       state?.recent
         .filter((r) => r.station_id === postId)
         .sort((a, b) => b.station_position - a.station_position)
-        .slice(0, 12) ?? [],
+        .slice(0, 3) ?? [],
     [state?.recent, postId],
   );
   const refresh = async (quiet = false, id = postId) => {
@@ -486,13 +486,13 @@ export function RaceStation({
                 </p>
               </div>
             </section>
-            <section className="cross-panel p-5 text-center sm:p-8">
+            <section className="cross-panel p-4 text-center sm:p-5">
               {state?.heat.status === "running" ? (
                 <>
-                  <span className="mx-auto grid size-16 place-items-center rounded-2xl bg-[#fff3a9] text-[#1154b3]">
-                    <ScanLine className="size-8" />
+                  <span className="mx-auto grid size-12 place-items-center rounded-xl bg-[#fff3a9] text-[#1154b3]">
+                    <ScanLine className="size-6" />
                   </span>
-                  <h1 className="mt-4 text-2xl font-bold">
+                  <h1 className="mt-2 text-xl font-bold">
                     Scanner avec le Poste {my?.station_order}
                   </h1>
                   <p className="mt-1 text-sm text-slate-500">
@@ -500,7 +500,7 @@ export function RaceStation({
                     dans l’ordre. Vous pouvez scanner le dossard suivant sans
                     attendre le rafraîchissement de l’écran.
                   </p>
-                  <div className="mx-auto mt-5 max-w-xl">
+                  <div className="mx-auto mt-3 max-w-xl">
                     <Input
                       ref={inputRef}
                       value={code}
@@ -519,7 +519,7 @@ export function RaceStation({
                       aria-describedby="bib-help"
                       placeholder="N° de dossard ou code scanné"
                       inputMode="numeric"
-                      className="h-18 text-center font-mono text-3xl font-bold tracking-wide"
+                      className="h-14 text-center font-mono text-2xl font-bold tracking-wide"
                       autoComplete="off"
                       disabled={!connected}
                     />
@@ -538,7 +538,7 @@ export function RaceStation({
                     )}
                     <div className="mt-3 flex flex-wrap gap-2">
                       <Button
-                        className="h-12 flex-1"
+                        className="h-10 flex-1"
                         onClick={enqueue}
                         disabled={!code.trim() || !connected}
                       >
@@ -547,7 +547,7 @@ export function RaceStation({
                       </Button>
                       <Button
                         variant="outline"
-                        className="h-12"
+                        className="h-10"
                         onClick={() => void undo()}
                         disabled={!myRecent.length || scanning || queued > 0}
                       >
@@ -574,44 +574,14 @@ export function RaceStation({
                 </>
               )}
             </section>
-            {lastArrival && (
-              <section className={`rounded-[1.5rem] border-2 p-5 ${lastArrival.sex_corrected ? "border-amber-300 bg-amber-50" : "border-emerald-200 bg-emerald-50"}`}>
-                <p className="text-xs font-bold uppercase tracking-widest text-emerald-700">
-                  Dernier scan confirmé
-                </p>
-                {lastArrival.sex_corrected && (
-                  <p className="mt-2 rounded-lg bg-white/80 p-2 text-sm font-bold text-amber-800">
-                    Sexe incohérent dans le fichier : élève accepté et classé en {lastArrival.sex === "F" ? "Filles" : "Garçons"} pour cette course.
-                  </p>
-                )}
-                <div className="mt-2 flex flex-col gap-4 sm:flex-row sm:items-end sm:justify-between">
-                  <div>
-                    <p className="text-4xl font-bold text-emerald-800">
-                      {letters[lastArrival.station_order - 1]}
-                      {lastArrival.station_position}
-                    </p>
-                    <p className="text-xl font-bold">
-                      {lastArrival.first_name}{" "}
-                      {lastArrival.last_name.toUpperCase()}
-                    </p>
-                    <p className="text-sm text-slate-600">
-                      Dossard {lastArrival.bib_code} · {lastArrival.class_name}
-                    </p>
-                  </div>
-                  <div className="text-right">
-                    <p className="text-xs text-slate-500">
-                      Rang fusionné provisoire
-                    </p>
-                    <p className="text-2xl font-bold">
-                      #{lastArrival.finish_position}
-                    </p>
-                  </div>
-                </div>
-              </section>
+            {lastArrival?.sex_corrected && (
+              <p className="rounded-xl border border-amber-300 bg-amber-50 p-3 text-sm font-bold text-amber-800">
+                Sexe incohérent dans le fichier : {lastArrival.first_name} {lastArrival.last_name.toUpperCase()} a été accepté et classé en {lastArrival.sex === "F" ? "Filles" : "Garçons"}.
+              </p>
             )}
             <section className="overflow-hidden rounded-[1.5rem] border bg-white">
               <div className="border-b p-4">
-                <h2 className="font-bold">Historique de votre poste</h2>
+                <h2 className="font-bold">3 derniers élèves scannés</h2>
                 <p className="text-xs text-slate-500">
                   La référence A/B/C/D reste fixe même si le rang fusionné
                   évolue.
@@ -624,8 +594,8 @@ export function RaceStation({
                   </p>
                 )}
                 {myRecent.map((recent) => (
-                  <div key={recent.id} className="flex items-center gap-4 p-4">
-                    <span className="grid size-11 shrink-0 place-items-center rounded-xl bg-blue-50 font-bold text-[#1154b3]">
+                  <div key={recent.id} className="flex items-center gap-3 p-3">
+                    <span className="grid size-10 shrink-0 place-items-center rounded-xl bg-blue-50 font-bold text-[#1154b3]">
                       {letters[recent.station_order - 1]}
                       {recent.station_position}
                     </span>

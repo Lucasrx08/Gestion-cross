@@ -287,6 +287,22 @@ async function saveHeatPlan(body: J) {
   return data;
 }
 
+async function updateHeatMetadata(body: J) {
+  const c = client();
+  const owner = await ownerHash(body);
+  const time = txt(body.scheduledTime, 8);
+  if (time && !/^([01]\d|2[0-3]):[0-5]\d(:[0-5]\d)?$/.test(time)) fail("HORAIRE_INVALIDE");
+  const { data, error } = await c.rpc("cross_update_heat_metadata_internal", {
+    p_heat_id: txt(body.heatId, 80),
+    p_owner_key_hash: owner,
+    p_name: txt(body.name),
+    p_scheduled_time: time || null,
+    p_challenge_enabled: Boolean(body.challengeEnabled),
+  });
+  if (error) throw error;
+  return data;
+}
+
 async function startHeat(body: J) {
   const c = client();
   const owner = await ownerHash(body);
@@ -503,6 +519,7 @@ Deno.serve(async (request) => {
       owner_state: () => ownerState(body),
       create_heat: () => saveHeatPlan(body),
       update_heat: () => saveHeatPlan(body),
+      update_heat_metadata: () => updateHeatMetadata(body),
       start_heat: () => startHeat(body),
       finish_heat: () => finishHeat(body),
       heat_entries: () => heatEntries(body),

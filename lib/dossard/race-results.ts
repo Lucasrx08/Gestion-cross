@@ -41,6 +41,7 @@ export function overallChallenge(
     });
   });
   return [...totals.values()].map(result => ({ ...result, ...challengeRatios(result) }))
+    .filter(result => gradeCategory(result.className) !== "Lycée")
     .filter(result => grade === "all" || gradeCategory(result.className) === grade)
     .sort((a, b) => Number(b.complete) - Number(a.complete) || (a.score ?? Infinity) - (b.score ?? Infinity) || a.className.localeCompare(b.className, "fr"));
 }
