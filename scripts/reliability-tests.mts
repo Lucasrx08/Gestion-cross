@@ -20,6 +20,9 @@ import {
 } from "../lib/dossard/validation";
 import {
   isRetryableRaceError,
+  raceErrorMessage,
+  raceRequestPolicy,
+  stationApi,
   type CloudHeat,
   type HeatEntry,
 } from "../lib/dossard/race-api";
@@ -193,9 +196,62 @@ test("700 scans en attente : clôture, accès perdu et erreur inconnue conserven
 });
 test("Réseau/timeout : réessai ; dossard inconnu : refus sans réessai infini", () => {
   assert(isRetryableRaceError(new Error("REQUEST_TIMEOUT")));
+  assert(isRetryableRaceError(new Error("READ_REQUEST_TIMEOUT")));
   assert(isRetryableRaceError(new Error("ARRIVEE_NON_ENREGISTREE")));
   assert(!isRetryableRaceError(new Error("DOSSARD_INCONNU")));
 });
+test("Chargements lourds : délai renforcé et une seule relance, jamais pour les scans", () => {
+  assert.deepEqual(raceRequestPolicy("owner_state"), {
+    timeoutMs: 30000,
+    maxAttempts: 2,
+    retryDelayMs: 400,
+  });
+  assert.deepEqual(raceRequestPolicy("heat_entries"), {
+    timeoutMs: 30000,
+    maxAttempts: 2,
+    retryDelayMs: 400,
+  });
+  assert.deepEqual(raceRequestPolicy("scan"), {
+    timeoutMs: 18000,
+    maxAttempts: 1,
+    retryDelayMs: 0,
+  });
+  assert.match(
+    raceErrorMessage(new Error("READ_REQUEST_TIMEOUT")),
+    /Aucune donnée n’a été supprimée/,
+  );
+});
+const realFetch = globalThis.fetch;
+try {
+  let readCalls = 0;
+  globalThis.fetch = async () => {
+    readCalls += 1;
+    if (readCalls === 1)
+      return new Response(JSON.stringify({ error: "ERREUR_SERVEUR" }), {
+        status: 503,
+      });
+    return new Response(JSON.stringify({ data: { recovered: true } }), {
+      status: 200,
+    });
+  };
+  const recovered = await stationApi<{ recovered: boolean }>("owner_state");
+  assert.equal(recovered.recovered, true);
+  assert.equal(readCalls, 2);
+
+  let scanCalls = 0;
+  globalThis.fetch = async () => {
+    scanCalls += 1;
+    return new Response(JSON.stringify({ error: "ERREUR_SERVEUR" }), {
+      status: 503,
+    });
+  };
+  await assert.rejects(() => stationApi("scan"), /ERREUR_SERVEUR/);
+  assert.equal(scanCalls, 1);
+  checks += 1;
+  console.log("✓ Relance réelle des lectures, sans répétition automatique des scans");
+} finally {
+  globalThis.fetch = realFetch;
+}
 
 const event = createRaceEvent({ name: "Cross fictif" });
 event.participants = entries.map((e, index) => ({

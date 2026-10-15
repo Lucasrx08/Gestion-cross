@@ -2,6 +2,14 @@ const SUPABASE_URL = "https://iybbfprsnhvdbpvftwjk.supabase.co";
 const SUPABASE_KEY = "sb_publishable_bEJiROkfolgJkX4LqsXmDw_6vUspKNu";
 const API_URL = `${SUPABASE_URL}/functions/v1/race-api`;
 const OWNER_KEY_STORAGE = "gestion-cross-owner-key-v1";
+const RESILIENT_READ_ACTIONS = new Set(["owner_state", "heat_entries"]);
+
+export function raceRequestPolicy(action: string) {
+  if (RESILIENT_READ_ACTIONS.has(action)) {
+    return { timeoutMs: 30000, maxAttempts: 2, retryDelayMs: 400 };
+  }
+  return { timeoutMs: 18000, maxAttempts: 1, retryDelayMs: 0 };
+}
 
 export type EntryStatus =
   "registered" | "finished" | "dnf" | "exempt" | "absent";
@@ -129,57 +137,76 @@ async function api<T>(
   payload: Record<string, unknown>,
   includeOwnerKey = false,
 ): Promise<T> {
-  const controller = new AbortController();
-  const timer = setTimeout(() => controller.abort(), 18000);
-  try {
-    let data = payload;
-    if (
-      action === "sync_event" &&
-      payload.event &&
-      typeof payload.event === "object"
-    ) {
-      const event = payload.event as Record<string, unknown>;
-      // Ne pas envoyer les fonds d’impression (jusqu’à 30 Mo) à chaque synchronisation.
-      data = {
-        ...payload,
-        event: {
-          id: event.id,
-          name: event.name,
-          year: event.year,
-          location: event.location,
-          date: event.date,
-          participants: event.participants,
-        },
-      };
-    }
-    const response = await fetch(API_URL, {
-      method: "POST",
-      signal: controller.signal,
-      headers: { apikey: SUPABASE_KEY, "Content-Type": "application/json" },
-      body: JSON.stringify({
-        action,
-        ...(includeOwnerKey ? { ownerKey: ownerKey() } : {}),
-        ...data,
-      }),
-    });
-    const result = (await response.json().catch(() => ({}))) as Record<
-      string,
-      unknown
-    >;
-    if (!response.ok || result.error)
-      throw new Error(String(result.error ?? `HTTP_${response.status}`));
-    if (!("data" in result)) throw new Error("REPONSE_SERVEUR_INVALIDE");
-    return result.data as T;
-  } catch (error) {
-    if (controller.signal.aborted) throw new Error("REQUEST_TIMEOUT");
-    throw error;
-  } finally {
-    clearTimeout(timer);
+  let data = payload;
+  if (
+    action === "sync_event" &&
+    payload.event &&
+    typeof payload.event === "object"
+  ) {
+    const event = payload.event as Record<string, unknown>;
+    // Ne pas envoyer les fonds d’impression (jusqu’à 30 Mo) à chaque synchronisation.
+    data = {
+      ...payload,
+      event: {
+        id: event.id,
+        name: event.name,
+        year: event.year,
+        location: event.location,
+        date: event.date,
+        participants: event.participants,
+      },
+    };
   }
+  const requestBody = JSON.stringify({
+    action,
+    ...(includeOwnerKey ? { ownerKey: ownerKey() } : {}),
+    ...data,
+  });
+  const policy = raceRequestPolicy(action);
+  let lastError: unknown = new Error("REQUEST_TIMEOUT");
+
+  for (let attempt = 1; attempt <= policy.maxAttempts; attempt += 1) {
+    const controller = new AbortController();
+    const timer = setTimeout(() => controller.abort(), policy.timeoutMs);
+    try {
+      const response = await fetch(API_URL, {
+        method: "POST",
+        signal: controller.signal,
+        headers: { apikey: SUPABASE_KEY, "Content-Type": "application/json" },
+        body: requestBody,
+      });
+      const result = (await response.json().catch(() => ({}))) as Record<
+        string,
+        unknown
+      >;
+      if (!response.ok || result.error)
+        throw new Error(String(result.error ?? `HTTP_${response.status}`));
+      if (!("data" in result)) throw new Error("REPONSE_SERVEUR_INVALIDE");
+      return result.data as T;
+    } catch (error) {
+      lastError = controller.signal.aborted
+        ? new Error("REQUEST_TIMEOUT")
+        : error;
+      const canRetry =
+        attempt < policy.maxAttempts && isRetryableRaceError(lastError);
+      if (!canRetry) break;
+      await new Promise((resolve) => setTimeout(resolve, policy.retryDelayMs));
+    } finally {
+      clearTimeout(timer);
+    }
+  }
+
+  if (
+    RESILIENT_READ_ACTIONS.has(action) &&
+    lastError instanceof Error &&
+    lastError.message === "REQUEST_TIMEOUT"
+  )
+    throw new Error("READ_REQUEST_TIMEOUT");
+  throw lastError;
 }
 export function isRetryableRaceError(error: unknown) {
   const code = error instanceof Error ? error.message : String(error);
-  return /REQUEST_TIMEOUT|ARRIVEE_NON_ENREGISTREE|REPONSE_SERVEUR_INVALIDE|Failed to fetch|NetworkError|Load failed|HTTP_5\d\d|HTTP_429|ERREUR_SERVEUR/.test(
+  return /READ_REQUEST_TIMEOUT|REQUEST_TIMEOUT|ARRIVEE_NON_ENREGISTREE|REPONSE_SERVEUR_INVALIDE|Failed to fetch|NetworkError|Load failed|HTTP_5\d\d|HTTP_429|ERREUR_SERVEUR/.test(
     code,
   );
 }
@@ -198,6 +225,8 @@ export function stationApi<T>(
 export function raceErrorMessage(error: unknown) {
   const code = error instanceof Error ? error.message : String(error);
   const messages: Record<string, string> = {
+    READ_REQUEST_TIMEOUT:
+      "Le chargement prend exceptionnellement trop de temps. Aucune donnée n’a été supprimée : vous pouvez réessayer.",
     REQUEST_TIMEOUT:
       "Le serveur n’a pas répondu à temps. Les scans en attente sont conservés et seront réessayés.",
     REPONSE_SERVEUR_INVALIDE:
