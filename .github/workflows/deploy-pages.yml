@@ -1,4 +1,4 @@
-name: Déployer le générateur de dossards
+name: Déployer l’application Gestion Cross
 
 on:
   push:
