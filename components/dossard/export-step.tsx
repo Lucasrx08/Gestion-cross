@@ -10,7 +10,7 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Tabs, TabsList, TabsTrigger, TabsContent } from "@/components/ui/tabs";
 import { Progress } from "@/components/ui/progress";
-import { RadioGroup, RadioGroupItem } from "@/components/ui/radio-group";
+import { HelpDialog } from "./help-dialog";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import {
   downloadBlob,
@@ -123,13 +123,13 @@ export function ExportStep({ event, onChange, selectedIds, initialSingleId }: Ex
     <div className="space-y-6">
       <StepHeading icon={Printer} title="Dossards & impressions" description="Préparez vos dossards, vos listes et vos pochettes, ou exportez la base des élèves." />
       <Tabs value={exportTab} onValueChange={setExportTab} className="gap-5">
-        <TabsList aria-label="Supports et exports des dossards" className="cross-panel grid h-auto w-full grid-cols-2 gap-2 p-2 xl:grid-cols-4 group-data-[orientation=horizontal]/tabs:h-auto">
+        <TabsList aria-label="Supports et exports des dossards" className="grid h-auto w-full grid-cols-2 gap-1 rounded-xl bg-slate-100 p-1 sm:grid-cols-4 group-data-[orientation=horizontal]/tabs:h-auto">
           {[
-            {value:"bibs",label:"Impression des dossards"},
-            {value:"roster",label:"Liste de secours par classe"},
-            {value:"base",label:"Exporter la base"},
-            {value:"pockets",label:"Pochettes de classes"},
-          ].map(tab => <TabsTrigger key={tab.value} value={tab.value} className="h-auto min-h-11 whitespace-normal px-3 py-3 font-semibold data-[state=active]:bg-primary data-[state=active]:text-primary-foreground">{tab.label}</TabsTrigger>)}
+            {value:"bibs",label:"Dossards"},
+            {value:"roster",label:"Listes de secours"},
+            {value:"base",label:"Base élèves"},
+            {value:"pockets",label:"Pochettes"},
+          ].map(tab => <TabsTrigger key={tab.value} value={tab.value} className="h-auto min-h-11 whitespace-normal px-3 py-2 text-xs sm:text-sm font-semibold data-[state=active]:bg-primary data-[state=active]:text-primary-foreground">{tab.label}</TabsTrigger>)}
         </TabsList>
         <TabsContent value="bibs" className="space-y-5">
       {!ready && (
@@ -144,24 +144,8 @@ export function ExportStep({ event, onChange, selectedIds, initialSingleId }: Ex
 
       <section className="cross-editor-grid grid gap-4">
         <div className="cross-panel p-5">
-          <p className="text-xs font-bold uppercase tracking-wider text-[#1154b3]">PDF A4 haute qualité</p>
-          <h2 className="mb-5 text-xl font-black">Choisir les dossards</h2>
-          <RadioGroup value={mode} onValueChange={(value) => setMode(value as ExportMode)} className="grid gap-3 sm:grid-cols-2">
-            {options.map((option) => (
-              <Label
-                key={option.value}
-                className={`mb-0 cursor-pointer rounded-xl border p-4 ${mode === option.value ? "border-[#1154b3] bg-blue-50 ring-2 ring-blue-700/15" : ""}`}
-              >
-                <span className="flex gap-3">
-                  <RadioGroupItem value={option.value} className="mt-0.5 shrink-0" />
-                  <span>
-                    <b className="block">{option.title}</b>
-                    <span className="text-sm font-normal text-slate-500">{option.description}</span>
-                  </span>
-                </span>
-              </Label>
-            ))}
-          </RadioGroup>
+          <h2 className="mb-4 text-lg font-bold">Quels dossards imprimer ?</h2>
+          <Select value={mode} onValueChange={value=>setMode(value as ExportMode)}><SelectTrigger aria-label="Dossards à imprimer" className="w-full"><SelectValue/></SelectTrigger><SelectContent>{options.map(option=><SelectItem key={option.value} value={option.value}>{option.title}</SelectItem>)}</SelectContent></Select>
 
           <div className="mt-5 rounded-xl bg-slate-50 p-4">
             {mode === "class" && (
@@ -216,7 +200,7 @@ export function ExportStep({ event, onChange, selectedIds, initialSingleId }: Ex
             {mode !== "single" && <div className="space-y-4">
               <div><Label htmlFor="bib-print-sort">Ordre des dossards après découpe</Label><Select value={printSort} onValueChange={value => setPrintSort(value as BibPrintSort)} disabled={generating}><SelectTrigger id="bib-print-sort" className="mt-2 w-full bg-white"><SelectValue /></SelectTrigger><SelectContent><SelectItem value="class-name">Par classe, puis nom et prénom</SelectItem><SelectItem value="name">Par nom et prénom, toutes classes confondues</SelectItem><SelectItem value="number">Par numéro de dossard</SelectItem></SelectContent></Select></div>
               <div><Label htmlFor="bib-print-assembly">Disposition sur les feuilles A4</Label><Select value={cutAndStack ? "cut-stack" : "sequential"} onValueChange={value => setCutAndStack(value === "cut-stack")} disabled={generating}><SelectTrigger id="bib-print-assembly" className="mt-2 w-full bg-white"><SelectValue /></SelectTrigger><SelectContent><SelectItem value="cut-stack">Couper la pile puis superposer</SelectItem><SelectItem value="sequential">Deux dossards consécutifs par feuille</SelectItem></SelectContent></Select></div>
-              <p className="text-sm text-slate-600">{cutAndStack ? "Gardez les feuilles dans l’ordre du PDF. Prenez séparément la pile de chaque classe si vous avez choisi le tri par classe. Coupez la pile au milieu, puis placez la pile du haut sur celle du bas : les dossards seront déjà triés." : "Sur chaque feuille, les deux dossards se suivent dans l’ordre choisi."} Les numéros des élèves restent inchangés.</p>
+              <HelpDialog title="Découper et superposer les dossards" label="Comment découper ?"><p>Gardez les feuilles dans l’ordre du PDF. Avec le tri par classe, prenez séparément la pile de chaque classe.</p><p>Coupez la pile au milieu, puis posez la pile du haut sur celle du bas. Les dossards seront déjà triés.</p><p>La disposition « Deux dossards consécutifs » conserve deux numéros successifs par feuille. Les numéros des élèves restent inchangés.</p></HelpDialog>
               {selected.length > 0 && <div className="rounded-lg border bg-white p-3"><p className="mb-2 text-xs font-semibold uppercase text-slate-500">Premières feuilles · haut / bas</p>{Array.from({length:Math.min(a4Pages,3)},(_,page) => {
                 const top = printSlots[page * 2];
                 const bottom = printSlots[page * 2 + 1];
@@ -270,9 +254,9 @@ export function ExportStep({ event, onChange, selectedIds, initialSingleId }: Ex
       <section className="cross-panel flex flex-wrap items-center gap-4 p-5">
         <div className="min-w-0 flex-1">
           <h2 className="font-bold">Liste de secours par classe</h2>
-          <p className="text-sm text-slate-500">Tous les élèves, classés par classe puis par nom : nom, prénom et dossard associé. 30 élèves par page : une classe de 25 ou 26 élèves tient sur une feuille. À garder au poste de scan en cas de dossard perdu.</p>
+          <p className="mt-1 text-sm text-slate-500">Nom, prénom et dossard · 30 élèves par page</p>
         </div>
-        <Button variant="outline" disabled={!event.participants.length || rosterBusy} onClick={()=>void printRoster()}><Printer />{rosterBusy ? "Création…" : "Liste par classe · PDF / impression"}</Button>
+        <Button variant="outline" disabled={!event.participants.length || rosterBusy} onClick={()=>void printRoster()}><Printer />{rosterBusy ? "Création…" : "Télécharger le PDF"}</Button>
       </section>
         </TabsContent>
         <TabsContent value="base">

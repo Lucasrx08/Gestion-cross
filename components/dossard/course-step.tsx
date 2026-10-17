@@ -8,6 +8,7 @@ import {
   ChevronLeft,
   ChevronRight,
   ArrowUp,
+  CircleHelp,
   Cloud,
   Copy,
   Download,
@@ -15,8 +16,10 @@ import {
   Flag,
   Image as ImageIcon,
   Link2,
+  ListOrdered,
   Loader2,
   Medal,
+  MoreHorizontal,
   Palette,
   Pencil,
   Play,
@@ -38,8 +41,18 @@ import {
   DialogHeader,
   DialogTitle,
 } from "@/components/ui/dialog";
+import { AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent, AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle } from "@/components/ui/alert-dialog";
+import { HelpDialog } from "./help-dialog";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
+import {
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuLabel,
+  DropdownMenuSeparator,
+  DropdownMenuTrigger,
+} from "@/components/ui/dropdown-menu";
 import {
   Select,
   SelectContent,
@@ -135,6 +148,17 @@ function loadCanvasImage(src: string) {
   });
 }
 
+function ExportMenu({ disabled, socialDisabled, onPdf, onExcel, onPost, onStory }: {
+  disabled?: boolean;
+  socialDisabled?: boolean;
+  onPdf: () => void;
+  onExcel: () => void;
+  onPost: () => void;
+  onStory: () => void;
+}) {
+  return <DropdownMenu><DropdownMenuTrigger asChild><Button size="sm" className="mt-2 w-full" disabled={disabled}><Download />Choisir le format</Button></DropdownMenuTrigger><DropdownMenuContent align="start" className="min-w-48"><DropdownMenuLabel>Document</DropdownMenuLabel><DropdownMenuItem onClick={onPdf}><Printer />PDF</DropdownMenuItem><DropdownMenuItem onClick={onExcel}><FileSpreadsheet />Excel</DropdownMenuItem><DropdownMenuSeparator /><DropdownMenuLabel>{socialDisabled ? "Choisir une catégorie pour les visuels" : "Réseaux sociaux"}</DropdownMenuLabel><DropdownMenuItem disabled={socialDisabled} onClick={onPost}><ImageIcon />Publication</DropdownMenuItem><DropdownMenuItem disabled={socialDisabled} onClick={onStory}><ImageIcon />Story</DropdownMenuItem></DropdownMenuContent></DropdownMenu>;
+}
+
 export function CourseStep({
   event,
   onChange,
@@ -215,7 +239,13 @@ export function CourseStep({
   const [challengeError, setChallengeError] = useState("");
   const [challengeRevision, setChallengeRevision] = useState(0);
   const [challengeGrade, setChallengeGrade] = useState("all");
-  const [challengeExportGrade, setChallengeExportGrade] = useState("6e");
+  const [challengeExportGrade, setChallengeExportGrade] = useState("all");
+  const [challengeHelpOpen, setChallengeHelpOpen] = useState(false);
+  const [courseDetailsOpen, setCourseDetailsOpen] = useState(false);
+  const [courseFocus, setCourseFocus] = useState(false);
+  const [finishCandidate, setFinishCandidate] = useState<CloudHeat>();
+  const [arrivalSearch, setArrivalSearch] = useState("");
+  const [challengeDetail, setChallengeDetail] = useState<ReturnType<typeof overallChallenge>[number]>();
   const allOverallResults = overallChallenge(challengeCourses);
   const overallResults = overallChallenge(challengeCourses, challengeGrade);
   const challengeGrades = [...new Set(["6e", "5e", "4e", "3e", ...allOverallResults.map(result => gradeCategory(result.className))])].sort(compareCategories);
@@ -224,7 +254,7 @@ export function CourseStep({
   );
   const resolvedChallengeExportGrade = challengeExportGrades.includes(challengeExportGrade)
     ? challengeExportGrade
-    : (challengeExportGrades[0] ?? challengeExportGrade);
+    : "all";
   const challengeGradeLabel = challengeGrade === "all" ? "Tous les niveaux" : (gradeLabels[challengeGrade] ?? challengeGrade);
   const activeHeatRef = useRef<string | undefined>(undefined);
   const selectedSectionRef = useRef<HTMLElement>(null);
@@ -236,6 +266,8 @@ export function CourseStep({
     .sort(
       (a, b) => (a.finish_position ?? 99999) - (b.finish_position ?? 99999),
     );
+  const arrivalQuery = arrivalSearch.trim().toLocaleLowerCase("fr");
+  const visibleArrivals = ranked.filter(entry => !arrivalQuery || [entry.participant.first_name, entry.participant.last_name, entry.participant.class_name, String(entry.participant.bib_number)].join(" ").toLocaleLowerCase("fr").includes(arrivalQuery));
   const categoryRanks = rankWithinCategory(entries);
   const gradeGroups = individualGroups(entries);
   const visibleCategory = gradeGroups.some(
@@ -556,6 +588,8 @@ export function CourseStep({
         ),
       );
       setStationCode(result.stationCode);
+      setCourseFocus(true);
+      setCourseView("manage");
       await refreshOwner();
       await refreshEntries(heat.id);
       setShareOpen(true);
@@ -566,13 +600,7 @@ export function CourseStep({
     }
   };
   const finish = async (heat = selectedHeat) => {
-    if (
-      !heat ||
-      !confirm(
-        `Terminer « ${heat.name} » ? Les élèves encore à courir seront classés non-finisseurs.`,
-      )
-    )
-      return;
+    if (!heat || loading) return;
     try {
       setLoading(true);
       setSelectedHeatId(heat.id);
@@ -580,6 +608,9 @@ export function CourseStep({
       await ownerApi("finish_heat", { heatId: heat.id });
       await refreshOwner();
       await refreshEntries(heat.id);
+      setFinishCandidate(undefined);
+      setCourseFocus(true);
+      setCourseView("results");
       toast.success("Course terminée. Les résultats sont prêts.");
     } catch (error) {
       toast.error(raceErrorMessage(error));
@@ -806,11 +837,6 @@ export function CourseStep({
     }
     const width = 1080,
       height = story ? 1920 : 1080;
-    const canvas = document.createElement("canvas");
-    canvas.width = width;
-    canvas.height = height;
-    const ctx = canvas.getContext("2d");
-    if (!ctx) return;
     let logo: HTMLImageElement | undefined;
     try {
       logo = await loadCanvasImage(branding.logoDataUrl);
@@ -818,35 +844,27 @@ export function CourseStep({
       setBrandingOpen(true);
       return toast.error("Le logo de l’événement n’a pas pu être chargé. Ajoutez-le à nouveau dans « En-tête & visuels ».");
     }
-    drawSocialResults(ctx, {
-      story,
-      title: branding.title || event.name,
-      subtitle: branding.subtitle || "",
-      heading: kind === "classes" ? "CHALLENGE INTERCLASSES" : "TOP 10 · CLASSEMENT",
-      category: general ? `${socialGradeLabel} · filles + garçons` : kind === "individual" ? selectedGroups[0]?.category || "" : selectedHeat!.name,
-      note: kind === "classes" ? "Moyenne filles + moyenne garçons · dispensés exclus" : selectedHeat!.name,
-      primary: branding.primaryColor || "#1154b3",
-      secondary: branding.secondaryColor || "#fed60b",
-      rows: kind === "classes"
-        ? socialClassResults.map((result, index) => ({ rank: index + 1, label: result.className, detail: `${formatChallengeScore(result.score)}` }))
-        : (selectedGroups[0]?.entries.filter(entry => entry.status === "finished") || []).map(entry => ({
-            rank: categoryRanks.get(entry.id)?.rank || 0,
-            label: `${entry.participant.first_name} ${entry.participant.last_name.toUpperCase()}`,
-            detail: entry.participant.class_name,
-          })),
-    }, logo);
-    const fileName =
-      `${general ? event.name + "-challenge-general" + (grade === "all" ? "" : "-" + grade) : selectedHeat!.name}-${kind}-${story ? "story" : "post"}.png`.replace(
-        /\s+/g,
-        "-",
-      );
-    setSocialPreview({
-      dataUrl: canvas.toDataURL("image/png"),
-      fileName,
-      format: story ? "story" : "post",
-      width,
-      height,
+    const rows = kind === "classes"
+      ? socialClassResults.map((result, index) => ({ rank: index + 1, label: result.className, detail: formatChallengeScore(result.score) }))
+      : (selectedGroups[0]?.entries.filter(entry => entry.status === "finished") || []).slice(0, 10).map(entry => ({ rank: categoryRanks.get(entry.id)?.rank || 0, label: `${entry.participant.first_name} ${entry.participant.last_name.toUpperCase()}`, detail: entry.participant.class_name }));
+    const fileName = safeFileName(`${general ? event.name + "-challenge-general" + (grade === "all" ? "" : "-" + grade) : selectedHeat!.name}-${kind}-${story ? "story" : "post"}`);
+    const pageCount = Math.max(1, Math.ceil(rows.length / 10));
+    const pages = Array.from({length:pageCount}, (_,index) => {
+      const canvas = document.createElement("canvas"); canvas.width = width; canvas.height = height;
+      const ctx = canvas.getContext("2d");
+      if (!ctx) throw new Error("Aperçu indisponible.");
+      drawSocialResults(ctx, {
+        story, title: branding.title || event.name, subtitle: branding.subtitle || "",
+        heading: kind === "classes" ? "CHALLENGE INTERCLASSES" : "TOP 10 · CLASSEMENT",
+        category: general ? `${socialGradeLabel} · filles + garçons` : kind === "individual" ? selectedGroups[0]?.category || "" : selectedHeat!.name,
+        note: `${kind === "classes" ? "Moyenne filles + moyenne garçons · dispensés exclus" : selectedHeat!.name}${pageCount > 1 ? ` · ${index + 1}/${pageCount}` : ""}`,
+        primary: branding.primaryColor || "#1154b3", secondary: branding.secondaryColor || "#fed60b",
+        rows: rows.slice(index*10,(index+1)*10),
+      }, logo);
+      return {dataUrl:canvas.toDataURL("image/png"), fileName:`${fileName}${pageCount > 1 ? `-${index+1}` : ""}.png`};
     });
+    setPreviewIndex(0);
+    setSocialPreview({ dataUrl:pages[0].dataUrl, fileName:pages[0].fileName, format:story ? "story" : "post", width, height, pages:pageCount > 1 ? pages : undefined });
   };
 
   const tvFullCategories = async () => {
@@ -1141,6 +1159,79 @@ export function CourseStep({
       link.click();
     });
   };
+  const courseExportTiles = selectedHeat?.status === "finished" && <>
+                <article className="rounded-2xl border bg-white p-4">
+                  <Medal className="text-[#1154b3]" />
+                  <h4 className="mt-2 text-lg font-bold">
+                    Classement individuel
+                  </h4>
+                  <div className="mt-4 flex flex-wrap gap-2">
+                    <Select value={visibleCategory} onValueChange={setResultCategory}><SelectTrigger className="w-full"><SelectValue /></SelectTrigger><SelectContent><SelectItem value="all">Toutes les catégories</SelectItem>{gradeGroups.map(group => <SelectItem key={group.category} value={group.category}>{group.category}</SelectItem>)}</SelectContent></Select>
+                    <ExportMenu disabled={loading || entriesLoading} socialDisabled={selectedGroups.length !== 1} onPdf={printIndividual} onExcel={() => void downloadResults("individual")} onPost={() => void social("individual", false)} onStory={() => void social("individual", true)} />
+                    <Button
+                      variant="outline"
+                      disabled={entriesLoading}
+                      onClick={() => void tvFullCategories()}
+                    >
+                      <ImageIcon />
+                      TV · classements complets
+                    </Button>
+                  </div>
+                  <p className="mt-3 text-xs text-slate-500">TV : deux catégories par écran, classement complet.</p>
+                </article>
+                <article className="rounded-2xl border bg-white p-4">
+                  <Users className="text-[#1154b3]" />
+                  <h4 className="mt-2 text-lg font-bold">
+                    Challenge de cette course
+                  </h4>
+                  <ExportMenu disabled={loading || !classResults.length || entriesLoading} onPdf={printClasses} onExcel={() => void downloadResults("classes")} onPost={() => void social("classes", false)} onStory={() => void social("classes", true)} />
+                </article>
+                <article className="rounded-2xl border bg-white p-4">
+                  <ImageIcon className="text-[#1154b3]" />
+                  <h4 className="mt-2 text-lg font-bold">
+                    Télévision · deux courses côte à côte
+                  </h4>
+                  <p className="text-sm text-slate-500">PNG Full HD prêt à diffuser.</p>
+                  <div className="mt-4 space-y-3">
+                    <div className="rounded-xl bg-slate-50 p-3 text-sm">
+                      <span className="text-slate-500">À gauche :</span>{" "}
+                      <b>{selectedHeat.name}</b>
+                    </div>
+                    <Select value={resolvedTvSecondHeatId} onValueChange={setTvSecondHeatId}>
+                      <SelectTrigger className="w-full">
+                        <SelectValue placeholder="Course à afficher à droite" />
+                      </SelectTrigger>
+                      <SelectContent>
+                        {heats
+                          .filter(
+                            (heat) =>
+                              heat.status === "finished" &&
+                              heat.id !== selectedHeat.id,
+                          )
+                          .map((heat) => (
+                            <SelectItem key={heat.id} value={heat.id}>
+                              {heat.name}
+                            </SelectItem>
+                          ))}
+                      </SelectContent>
+                    </Select>
+                    <Button
+                      className="w-full"
+                      disabled={loading || !resolvedTvSecondHeatId}
+                      onClick={() => void tvDuo()}
+                    >
+                      <Download />
+                      PNG TV · deux courses
+                    </Button>
+                  </div>
+                </article>
+                <article className="rounded-2xl border bg-white p-4">
+                  <Printer className="text-[#1154b3]" />
+                  <h4 className="mt-2 text-lg font-bold">Feuille de secours</h4>
+                  <p className="text-sm text-slate-500">30 lignes : arrivée + dossard.</p>
+                  <Button className="mt-4" size="sm" variant="outline" disabled={entriesLoading} onClick={printBackupSheet}><Printer />Imprimer / PDF</Button>
+                </article>
+  </>;
   if (ownerLoading)
     return (
       <section className="grid min-h-48 place-items-center text-slate-500">
@@ -1188,26 +1279,43 @@ export function CourseStep({
     );
 
   return (
-    <div className="mx-auto w-full max-w-6xl space-y-5">
-      <nav aria-label="Rubriques des courses" className="grid grid-cols-2 gap-2 rounded-2xl border bg-white p-2 lg:grid-cols-5">
-        {([
-          { value: "manage", label: "Gestion des courses" },
-          { value: "arrival", label: "Ordre d’arrivée commun" },
-          { value: "results", label: "Résultats" },
-          { value: "challenge", label: "Challenge interclasses" },
-          { value: "exports", label: "Impression" },
-        ] as const).map(view => <Button key={view.value} variant={courseView === view.value ? "default" : "ghost"} aria-current={courseView === view.value ? "page" : undefined} className="h-auto min-h-11 whitespace-normal" onClick={() => setCourseView(view.value)}>{view.label}</Button>)}
-      </nav>
-      <div hidden={courseView !== "manage"} className="space-y-5">
+    <div className="mx-auto w-full max-w-6xl space-y-4">
+      <div className="cross-course-controls sticky top-20 z-30 overflow-hidden rounded-2xl border bg-white/95 shadow-sm backdrop-blur">
+        <nav aria-label="Rubriques des courses" className="flex gap-1 overflow-x-auto p-1.5">
+          {([
+            { value: "manage", label: "Courses", icon: Flag },
+            { value: "arrival", label: "Arrivées", icon: ListOrdered },
+            { value: "results", label: "Résultats", icon: Medal },
+            { value: "challenge", label: "Challenge", icon: Users },
+            { value: "exports", label: "Impression", icon: Printer },
+          ] as const).map(view => <Button key={view.value} variant={courseView === view.value ? "default" : "ghost"} aria-current={courseView === view.value ? "page" : undefined} className="min-h-11 flex-1 shrink-0 flex-col gap-1 px-2 py-2 text-xs sm:flex-row sm:gap-2 sm:text-sm" onClick={() => { setCourseView(view.value); if (view.value === "manage") setCourseFocus(false); }}><view.icon className="size-4" />{view.label}</Button>)}
+        </nav>
+        {courseView !== "challenge" && (courseView !== "manage" || courseFocus) && <section ref={selectedSectionRef} aria-label="Commandes de la course" className="flex scroll-mt-40 flex-wrap items-center gap-2 border-t px-3 py-2.5">
+          {courseView === "manage" && <Button size="icon" variant="ghost" aria-label="Retour au programme" title="Programme" onClick={() => setCourseFocus(false)}><ChevronLeft /></Button>}
+          <Select value={selectedHeatId ?? ""} onValueChange={id => { if (id !== selectedHeatId) { setEntriesLoading(true); setSelectedHeatId(id); } }}>
+            <SelectTrigger aria-label="Course sélectionnée" className="min-w-0 flex-1 sm:max-w-sm"><SelectValue placeholder="Choisir une course" /></SelectTrigger>
+            <SelectContent>{heats.map(heat => <SelectItem key={heat.id} value={heat.id}>{heat.name} · {heat.status === "finished" ? "Terminée" : heat.status === "running" ? "En cours" : "Prête"}</SelectItem>)}</SelectContent>
+          </Select>
+          {selectedHeat && <>
+            <Badge variant="outline" className={selectedHeat.status === "running" ? "hidden border-blue-200 bg-blue-50 text-blue-700 sm:inline-flex" : "hidden sm:inline-flex"}>{selectedHeat.status === "running" ? "En cours" : selectedHeat.status === "finished" ? "Terminée" : "Prête"}</Badge>
+            {selectedHeat.status === "draft" && <Button size="sm" disabled={loading} onClick={() => void start()}><Play />Démarrer</Button>}
+            {selectedHeat.status === "running" && stationCode && <Button size="sm" variant="outline" asChild><a href={shareLink} target="_blank" rel="noopener noreferrer"><Link2/><span className="hidden sm:inline">Scanner</span></a></Button>}
+            {selectedHeat.status === "running" && <Button size="sm" variant="destructive" disabled={loading} onClick={() => setFinishCandidate(selectedHeat)}><Flag />Terminer</Button>}
+            <DropdownMenu><DropdownMenuTrigger asChild><Button size="icon" variant="outline" aria-label="Actions de la course" title="Actions de la course"><MoreHorizontal /></Button></DropdownMenuTrigger><DropdownMenuContent align="end" className="min-w-56">
+              <DropdownMenuItem onSelect={() => setCourseDetailsOpen(true)}><CircleHelp />Détails et classes</DropdownMenuItem>
+              <DropdownMenuItem disabled={loading} onSelect={() => editHeat(selectedHeat)}><Pencil />Modifier la course</DropdownMenuItem>
+              <DropdownMenuItem disabled={entriesLoading} onSelect={() => setStatusOpen(true)}><Users />Absents et dispensés</DropdownMenuItem>
+              {selectedHeat.status === "running" && <DropdownMenuItem disabled={!stationCode} onSelect={() => setShareOpen(true)}><Link2 />Ouvrir / ajouter un poste</DropdownMenuItem>}
+              <DropdownMenuItem onSelect={() => setBrandingOpen(true)}><Palette />En-tête et couleurs</DropdownMenuItem>
+              {selectedHeat.status !== "running" && <><DropdownMenuSeparator /><DropdownMenuItem className="text-red-600" onSelect={() => void deleteHeat()}><Trash2 />Supprimer la course</DropdownMenuItem></>}
+            </DropdownMenuContent></DropdownMenu>
+          </>}
+        </section>}
+      </div>
+      <div hidden={courseView !== "manage" || courseFocus} className="space-y-5">
       {archivePanel}
-      <section className="cross-panel p-5 sm:p-6">
-        <div className="flex flex-col gap-4 xl:flex-row xl:items-center">
-          <div className="min-w-0 flex-1">
-            <p className="cross-eyebrow">Courses du cross</p>
-            <h2 className="mt-1 text-[clamp(1.5rem,3vw,2rem)] font-bold tracking-tight">
-              Programme du cross
-            </h2>
-          </div>
+      <section className="flex flex-wrap items-center justify-between gap-3">
+          <h2 className="text-2xl font-bold tracking-tight">Programme</h2>
           <div className="flex flex-wrap gap-2">
             <Button disabled={loading} onClick={openCreate}>
               <Plus />
@@ -1218,7 +1326,6 @@ export function CourseStep({
               En-tête & visuels
             </Button>
           </div>
-        </div>
       </section>
 
       <CourseProgramme
@@ -1226,9 +1333,10 @@ export function CourseStep({
         selectedId={selectedHeatId}
         busy={loading}
         onStart={(heat) => void start(heat)}
-        onFinish={(heat) => void finish(heat)}
+        onFinish={setFinishCandidate}
         onEdit={editHeat}
         onOpen={(heat) => {
+          setCourseFocus(true);
           setCourseView(heat.status === "finished" ? "results" : "manage");
           if (heat.id === selectedHeatId)
             selectedSectionRef.current?.scrollIntoView({
@@ -1243,188 +1351,46 @@ export function CourseStep({
         }}
       />
       </div>
-      {(courseView === "results" || courseView === "arrival" || courseView === "exports") && (
-        <section className="cross-panel flex flex-wrap items-center gap-3 p-4">
-          <Label htmlFor="selected-course">Course à consulter</Label>
-          <Select value={selectedHeatId ?? ""} onValueChange={id => { setEntriesLoading(true); setSelectedHeatId(id); }}>
-            <SelectTrigger id="selected-course" className="w-full sm:w-96"><SelectValue placeholder="Choisir une course" /></SelectTrigger>
-            <SelectContent>{heats.map(heat => <SelectItem key={heat.id} value={heat.id}>{heat.name} · {heat.status === "finished" ? "Terminée" : heat.status === "running" ? "En cours" : "Prête"}</SelectItem>)}</SelectContent>
-          </Select>
-        </section>
-      )}
       {courseView === "challenge" && (
         <section className="cross-panel overflow-hidden">
           <div className="flex flex-wrap items-center justify-between gap-3 border-b p-5">
-          <div><h3 className="text-xl font-bold">Challenge interclasses général</h3><p className="mt-1 text-sm text-slate-500">{challengeCourses.length} course(s) prise(s) en compte · lycée exclu</p></div>
-            <div className="flex flex-wrap gap-2"><Button variant="outline" disabled={challengeLoading} onClick={() => setChallengeRevision(value => value + 1)}>Actualiser le challenge</Button></div>
+          <div><h3 className="text-xl font-bold">Challenge interclasses</h3><p className="mt-1 text-sm text-slate-500">{challengeCourses.length} course(s) · lycée exclu</p></div>
+            <div className="flex gap-2"><Button size="icon" variant="ghost" aria-label="Comprendre le challenge" onClick={() => setChallengeHelpOpen(true)}><CircleHelp /></Button><Button size="sm" variant="outline" disabled={challengeLoading} onClick={() => setChallengeRevision(value => value + 1)}>Actualiser</Button></div>
           </div>
           <div className="border-b bg-slate-50/60 p-4">
             <div className="flex flex-wrap gap-2" aria-label="Filtrer le challenge interclasses par niveau">
               <Button size="sm" variant={challengeGrade === "all" ? "default" : "outline"} aria-pressed={challengeGrade === "all"} onClick={() => setChallengeGrade("all")}>Tous les niveaux</Button>
               {challengeGrades.map(grade => <Button key={grade} size="sm" variant={challengeGrade === grade ? "default" : "outline"} aria-pressed={challengeGrade === grade} onClick={() => setChallengeGrade(grade)}>{gradeLabels[grade] ?? grade}</Button>)}
             </div>
-            <p className="mt-2 text-xs text-slate-500">{challengeGradeLabel} · moyenne filles + moyenne garçons · dispensés exclus · plus petit score gagnant</p>
+            <p className="mt-2 text-xs font-semibold text-slate-500">{challengeGradeLabel}</p>
           </div>
-          {challengeLoading ? <p className="p-5" role="status">Calcul des moyennes filles et garçons…</p> : challengeError ? <p className="p-5 text-red-700" role="alert">{challengeError}</p> : !overallResults.length ? <p className="p-5 text-sm text-slate-500">{challengeGrade === "all" ? "Le challenge apparaîtra après la fin d’une course avec challenge activé." : `Aucun résultat de challenge pour le niveau ${challengeGradeLabel}.`}</p> : <div className="cross-scroll"><table className="cross-table w-full"><thead><tr className="bg-blue-50 text-left text-xs text-slate-500"><th>Rang</th><th>Classe</th><th>Score F + G</th><th>Moyenne filles</th><th>Moyenne garçons</th><th>Effectif F / G</th><th>Dispensés exclus</th><th>État</th></tr></thead><tbody>{overallResults.map((result, index) => <tr className="border-t" key={classKey(result.className)}><td className="font-bold">{result.complete ? index + 1 : "—"}</td><td className="font-bold">{result.className}</td><td className="font-bold">{formatChallengeScore(result.score)}</td><td>{formatChallengeScore(result.girlsRatio)}</td><td>{formatChallengeScore(result.boysRatio)}</td><td>{result.girls} / {result.boys}</td><td>{result.exempt}</td><td>{result.complete ? "Complet" : result.unknown ? "Sexe à renseigner" : "Provisoire"}</td></tr>)}</tbody></table></div>}
+          {challengeLoading ? <p className="p-5" role="status">Calcul des moyennes filles et garçons…</p> : challengeError ? <p className="p-5 text-red-700" role="alert">{challengeError}</p> : !overallResults.length ? <p className="p-5 text-sm text-slate-500">{challengeGrade === "all" ? "Le challenge apparaîtra après la fin d’une course avec challenge activé." : `Aucun résultat de challenge pour le niveau ${challengeGradeLabel}.`}</p> : <div className="cross-scroll"><table className="cross-table w-full"><thead><tr className="bg-slate-50"><th>Rang</th><th>Classe</th><th>Score</th><th className="text-right">Détail</th></tr></thead><tbody>{overallResults.map((result, index) => <tr key={classKey(result.className)}><td className="font-bold text-primary">{result.complete ? index + 1 : "—"}</td><td><span className="font-bold">{result.className}</span>{!result.complete && <span className="mt-0.5 block text-xs text-amber-700">{result.unknown ? "Sexe à renseigner" : "Provisoire"}</span>}</td><td className="font-bold tabular-nums">{formatChallengeScore(result.score)}</td><td className="text-right"><Button size="icon" variant="ghost" aria-label={`Voir le calcul de ${result.className}`} onClick={() => setChallengeDetail(result)}><ChevronRight /></Button></td></tr>)}</tbody></table></div>}
         </section>
       )}
       {courseView === "exports" && heats.some((heat) => heat.status === "finished") && (
         <section className="cross-panel p-4 sm:p-5">
-          <p className="cross-eyebrow">Centre de téléchargement</p>
-          <h2 className="mt-1 text-2xl font-bold">Impressions et publications</h2>
-          <div className="mt-4 grid gap-3 md:grid-cols-2">
+          <h2 className="text-xl font-bold">Téléchargements</h2>
+          <div className="mt-4 grid gap-3 md:grid-cols-2 xl:grid-cols-3">
             <article className="rounded-2xl border bg-white p-4">
               <h3 className="font-bold">Toutes les courses</h3>
-              <div className="mt-3 flex flex-wrap gap-2">
-                <Button size="sm" disabled={loading || printingDocument} onClick={() => void printAllIndividuals()}><Printer />PDF complet</Button>
-                <Button size="sm" variant="outline" disabled={loading} onClick={() => void downloadResults("individual", true)}><FileSpreadsheet />Excel complet</Button>
-              </div>
+              <DropdownMenu><DropdownMenuTrigger asChild><Button className="mt-3 w-full" disabled={loading || printingDocument}><Download />Choisir le format</Button></DropdownMenuTrigger><DropdownMenuContent align="start"><DropdownMenuItem onClick={() => void printAllIndividuals()}><Printer />PDF complet</DropdownMenuItem><DropdownMenuItem onClick={() => void downloadResults("individual", true)}><FileSpreadsheet />Excel complet</DropdownMenuItem></DropdownMenuContent></DropdownMenu>
             </article>
             <article className="rounded-2xl border bg-white p-4">
               <h3 className="font-bold">Challenge interclasses</h3>
-              <div className="mt-3 rounded-xl bg-slate-50 p-3">
-                <p className="text-sm font-bold">Challenge complet</p>
-                <div className="mt-2 flex flex-wrap gap-2">
-                  <Button size="sm" disabled={challengeLoading || !!challengeError || !allOverallResults.length} onClick={() => printOverall("all")}><Printer />PDF</Button>
-                  <Button size="sm" variant="outline" disabled={loading || challengeLoading || !!challengeError || !allOverallResults.length} onClick={() => void downloadResults("classes", true, "all")}><FileSpreadsheet />Excel</Button>
-                  <Button size="sm" variant="outline" disabled={challengeLoading || !!challengeError || !allOverallResults.length} onClick={() => void social("classes", false, true, "all")}><ImageIcon />Publication</Button>
-                  <Button size="sm" variant="outline" disabled={challengeLoading || !!challengeError || !allOverallResults.length} onClick={() => void social("classes", true, true, "all")}><Download />Story</Button>
-                </div>
-              </div>
-              <div className="mt-3 rounded-xl border p-3">
-                <p className="text-sm font-bold">Par niveau</p>
-                <Select value={resolvedChallengeExportGrade} onValueChange={setChallengeExportGrade} disabled={!challengeExportGrades.length}>
-                  <SelectTrigger className="mt-2 w-full"><SelectValue placeholder="Aucun niveau disponible" /></SelectTrigger>
-                  <SelectContent>{challengeExportGrades.map(grade => <SelectItem key={grade} value={grade}>{gradeLabels[grade] ?? grade}</SelectItem>)}</SelectContent>
-                </Select>
-                <div className="mt-2 flex flex-wrap gap-2">
-                  <Button size="sm" disabled={challengeLoading || !!challengeError || !challengeExportGrades.length} onClick={() => printOverall(resolvedChallengeExportGrade)}><Printer />PDF</Button>
-                  <Button size="sm" variant="outline" disabled={loading || challengeLoading || !!challengeError || !challengeExportGrades.length} onClick={() => void downloadResults("classes", true, resolvedChallengeExportGrade)}><FileSpreadsheet />Excel</Button>
-                  <Button size="sm" variant="outline" disabled={challengeLoading || !!challengeError || !challengeExportGrades.length} onClick={() => void social("classes", false, true, resolvedChallengeExportGrade)}><ImageIcon />Publication</Button>
-                  <Button size="sm" variant="outline" disabled={challengeLoading || !!challengeError || !challengeExportGrades.length} onClick={() => void social("classes", true, true, resolvedChallengeExportGrade)}><Download />Story</Button>
-                </div>
-              </div>
+              <Select value={resolvedChallengeExportGrade} onValueChange={setChallengeExportGrade} disabled={!allOverallResults.length}>
+                <SelectTrigger aria-label="Périmètre du challenge à exporter" className="mt-3 w-full"><SelectValue /></SelectTrigger>
+                <SelectContent><SelectItem value="all">Challenge complet · hors lycée</SelectItem>{challengeExportGrades.map(grade => <SelectItem key={grade} value={grade}>{gradeLabels[grade] ?? grade}</SelectItem>)}</SelectContent>
+              </Select>
+              <ExportMenu disabled={loading || challengeLoading || !!challengeError || !allOverallResults.length} onPdf={() => printOverall(resolvedChallengeExportGrade)} onExcel={() => void downloadResults("classes", true, resolvedChallengeExportGrade)} onPost={() => void social("classes", false, true, resolvedChallengeExportGrade)} onStory={() => void social("classes", true, true, resolvedChallengeExportGrade)} />
             </article>
+            {courseExportTiles}
           </div>
         </section>
       )}
 
-      {selectedHeat && courseView !== "challenge" && (
+      {selectedHeat && courseView !== "challenge" && (courseView !== "manage" || courseFocus) && (
         <>
-          <section
-            ref={selectedSectionRef}
-            className={`scroll-mt-24 cross-panel p-5 sm:p-6 ${courseView === "exports" ? "hidden" : ""}`}
-          >
-            <div className="flex flex-col gap-4 xl:flex-row xl:items-center xl:justify-between">
-              <div>
-                <div className="flex flex-wrap items-center gap-2">
-                  <h3 className="text-2xl font-bold">{selectedHeat.name}</h3>
-                  <Badge variant="outline">
-                    {selectedHeat.status === "draft"
-                      ? "Prête"
-                      : selectedHeat.status === "running"
-                        ? "En cours"
-                        : "Terminée"}
-                  </Badge>
-                </div>
-                <p className="mt-1 text-sm text-slate-500">
-                  {selectedHeat.selected_classes.join(", ")} · {entries.length}{" "}
-                  engagé(s)
-                </p>
-              </div>
-              <div className={`flex flex-wrap gap-2 ${courseView !== "manage" && courseView !== "results" ? "hidden" : ""}`}>
-                {selectedHeat.status === "draft" && (
-                  <>
-                    <Button disabled={loading} onClick={() => void start()}>
-                      <Play />
-                      Lancer la course
-                    </Button>
-                    <Button
-                      variant="outline"
-                      disabled={loading}
-                      onClick={() => editHeat(selectedHeat)}
-                    >
-                      <Pencil />
-                      Modifier
-                    </Button>
-                  </>
-                )}
-                {selectedHeat.status === "running" && (
-                  <>
-                    <Button
-                      variant="outline"
-                      onClick={() =>
-                        stationCode
-                          ? setShareOpen(true)
-                          : toast.error(
-                              "Le code de cette course n’est plus disponible sur cet appareil.",
-                            )
-                      }
-                    >
-                      <Link2 />
-                      Ajouter un poste
-                    </Button>
-                    <Button
-                      variant="outline"
-                      disabled={loading}
-                      onClick={() => editHeat(selectedHeat)}
-                    >
-                      <Pencil />
-                      Modifier
-                    </Button>
-                    <Button
-                      className="bg-red-600 hover:bg-red-700"
-                      onClick={() => void finish(selectedHeat)}
-                    >
-                      Terminer
-                    </Button>
-                  </>
-                )}
-                {selectedHeat.status === "finished" && (
-                  <Button
-                    variant="outline"
-                    disabled={loading}
-                    onClick={() => editHeat(selectedHeat)}
-                  >
-                    <Pencil />
-                    Modifier
-                  </Button>
-                )}
-                <Button
-                  variant="outline"
-                  disabled={entriesLoading}
-                  onClick={() => setStatusOpen(true)}
-                >
-                  <Users />
-                  Absents / dispensés
-                </Button>
-                {selectedHeat.status !== "running" && (
-                  <Button
-                    variant="outline"
-                    className="text-red-600"
-                    onClick={() => void deleteHeat()}
-                  >
-                    <Trash2 />
-                    Supprimer
-                  </Button>
-                )}
-              </div>
-            </div>
-            {courseView === "manage" && selectedHeat.status === "draft" && (
-              <p className="mt-4 rounded-xl bg-slate-50 p-3 text-sm text-slate-600">
-                Course enregistrée
-                {selectedHeat.scheduled_time
-                  ? ` · Départ prévu à ${selectedHeat.scheduled_time.slice(0, 5)}`
-                  : ""}
-                . Vous pouvez renseigner les absents et dispensés avant le
-                départ. Le chronomètre démarrera uniquement au clic sur « Lancer
-                ».
-              </p>
-            )}
-            <div
-              aria-busy={entriesLoading}
-              className={`mt-5 grid grid-cols-2 gap-3 sm:grid-cols-3 xl:grid-cols-5 ${courseView !== "manage" ? "hidden" : ""}`}
-            >
+          {courseView === "manage" && <section aria-busy={entriesLoading} className="grid grid-cols-2 gap-2 sm:grid-cols-5">
               {[
                 { label: "Engagés", value: entries.length },
                 {
@@ -1448,28 +1414,29 @@ export function CourseStep({
                     .length,
                 },
               ].map((item) => (
-                <div key={item.label} className="rounded-2xl bg-slate-50 p-4">
+                <div key={item.label} className="rounded-xl border bg-white px-3 py-2.5">
                   <p className="text-xs text-slate-500">{item.label}</p>
-                  <p className="mt-1 text-3xl font-bold">{item.value}</p>
+                  <p className="mt-0.5 text-2xl font-bold">{item.value}</p>
                 </div>
               ))}
-            </div>
-          </section>
+          </section>}
 
-          {courseView !== "manage" && selectedHeat.status === "draft" && <p className="cross-panel p-5 text-sm text-slate-500">Cette course est en préparation. Lancez-la depuis « Gestion des courses » pour enregistrer les arrivées.</p>}
-          {courseView === "exports" && selectedHeat.status === "running" && <p className="cross-panel p-5 text-sm text-slate-500">Les impressions et visuels de cette course seront disponibles après sa clôture. Les classements provisoires sont dans « Résultats de la course ».</p>}
+          {courseView === "manage" && <div className="grid gap-3 sm:grid-cols-3">
+            {[
+              { value: "arrival" as const, title: "Arrivée commune", detail: `${ranked.length} arrivées`, icon: ListOrdered },
+              { value: "results" as const, title: "Classements", detail: `${gradeGroups.length} catégories`, icon: Medal },
+              { value: "exports" as const, title: "Impression", detail: "PDF, Excel, visuels", icon: Printer },
+            ].map(item => <button key={item.value} type="button" className="cross-panel flex items-center gap-3 p-4 text-left transition hover:border-primary hover:shadow-sm" onClick={() => setCourseView(item.value)}><span className="cross-icon"><item.icon className="size-5" /></span><span className="min-w-0 flex-1"><span className="block font-bold">{item.title}</span><span className="mt-1 block text-xs text-slate-500">{item.detail}</span></span><ChevronRight className="size-4 text-slate-400" /></button>)}
+          </div>}
+
+          {courseView !== "manage" && selectedHeat.status === "draft" && <p className="rounded-xl border border-dashed p-4 text-sm text-slate-500">Course prête à démarrer.</p>}
+          {courseView === "exports" && selectedHeat.status === "running" && <p className="cross-panel p-5 text-sm text-slate-500">Les exports seront disponibles après la fin de cette course.</p>}
 
           {courseView === "manage" && selectedHeat.status === "running" && stations.length > 0 && (
             <section className="cross-panel p-5 sm:p-6">
               <div className="flex items-center justify-between">
-                <div>
-                  <h3 className="font-bold">Postes d’arrivée</h3>
-                  <p className="text-sm text-slate-500">
-                    Chaque poste garde son ordre. Le classement fusionne
-                    automatiquement A → B → C → D.
-                  </p>
-                </div>
-                <Badge>{stations.length}/4</Badge>
+                <h3 className="font-bold">Postes d’arrivée</h3>
+                <div className="flex items-center gap-2"><HelpDialog title="Postes d’arrivée"><p>Les postes sont fusionnés dans l’ordre A → B → C → D. Chaque poste scanne une portion successive de la file d’arrivée.</p></HelpDialog><Badge>{stations.length}/4</Badge></div>
               </div>
               <div className="mt-4 grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
                 {stations.map((station) => {
@@ -1508,9 +1475,7 @@ export function CourseStep({
               <div className="flex flex-col gap-2 border-b p-5 sm:flex-row sm:items-center sm:justify-between">
                 <div>
                   <h3 className="text-xl font-bold">Ordre d’arrivée commun</h3>
-                  <p className="text-sm text-slate-500">
-                    L’ordre final est celui des postes A → B → C → D.
-                  </p>
+                  <p className="mt-1 text-xs text-slate-500">{ranked.length} arrivées</p>
                 </div>
                 {selectedHeat.status === "finished" && (
                   <Button
@@ -1522,13 +1487,17 @@ export function CourseStep({
                   </Button>
                 )}
               </div>
+              <div className="flex items-center gap-3 border-b px-4 py-3"><Search className="size-4 shrink-0 text-slate-400" /><Input aria-label="Rechercher dans les arrivées" value={arrivalSearch} onChange={e=>setArrivalSearch(e.target.value)} placeholder="Nom, classe ou dossard…" className="max-w-sm"/><HelpDialog title="Corriger une arrivée"><p>Utilisez « Place » pour envoyer un élève directement au rang d’arrivée commune souhaité. Les autres élèves se décalent automatiquement.</p><p>Les corrections de place sont disponibles une fois la course terminée. Le classement par catégorie est recalculé automatiquement.</p></HelpDialog></div>
               {!ranked.length ? (
                 <p className="p-8 text-center text-sm text-slate-500">
                   Aucune arrivée enregistrée.
                 </p>
               ) : (
-                <div className="cross-scroll">
-                  <table className="cross-table min-w-[980px]">
+                <div>
+                  <div className="divide-y md:hidden">{visibleArrivals.map(entry=><div key={entry.id} className="flex items-center gap-3 p-3"><span className="w-8 shrink-0 text-center text-xl font-bold text-primary">{entry.finish_position}</span><div className="min-w-0 flex-1"><p className="break-words text-sm font-semibold">{entry.participant.first_name} {entry.participant.last_name.toUpperCase()}</p><p className="mt-0.5 text-xs text-slate-500">{entry.participant.class_name} · dossard {entry.participant.bib_number}</p><p className="mt-0.5 text-xs text-slate-500">{categoryRanks.get(entry.id)?.category} · rang {categoryRanks.get(entry.id)?.rank ?? "—"}</p></div><Button size="sm" variant="outline" disabled={loading || selectedHeat.status !== "finished"} onClick={()=>{setReorderEntry(entry);setTargetPosition(String(entry.finish_position ?? ""));}}>Place</Button></div>)}</div>
+                  <div className="cross-scroll hidden md:block">
+                  <table className="cross-table min-w-[720px]">
+
                     <thead className="bg-blue-50 text-left text-xs uppercase text-slate-500">
                       <tr>
                         <th className="p-3">Rang arrivée</th>
@@ -1541,7 +1510,7 @@ export function CourseStep({
                       </tr>
                     </thead>
                     <tbody>
-                      {ranked.map((entry) => (
+                      {visibleArrivals.map((entry) => (
                         <tr key={entry.id} className="border-t">
                           <td className="p-3 text-xl font-bold text-[#1154b3]">
                             {entry.finish_position}
@@ -1584,207 +1553,41 @@ export function CourseStep({
                                 <Pencil />
                                 Place
                               </Button>
-                              <Button
-                                size="icon-sm"
-                                variant="ghost"
-                                disabled={
-                                  selectedHeat.status !== "finished" ||
-                                  entry.finish_position === 1
-                                }
-                                onClick={() => void move(entry, -1)}
-                              >
-                                <ArrowUp />
-                              </Button>
-                              <Button
-                                size="icon-sm"
-                                variant="ghost"
-                                disabled={
-                                  selectedHeat.status !== "finished" ||
-                                  entry.finish_position === ranked.length
-                                }
-                                onClick={() => void move(entry, 1)}
-                              >
-                                <ArrowDown />
-                              </Button>
-                              <Button
-                                size="icon-sm"
-                                variant="ghost"
-                                className="text-red-600"
-                                onClick={() => void removeFinish(entry)}
-                              >
-                                <Trash2 />
-                              </Button>
+                              <DropdownMenu><DropdownMenuTrigger asChild><Button size="icon" variant="ghost" aria-label={`Actions pour ${entry.participant.first_name} ${entry.participant.last_name}`}><MoreHorizontal /></Button></DropdownMenuTrigger><DropdownMenuContent align="end"><DropdownMenuItem disabled={loading || selectedHeat.status !== "finished" || entry.finish_position === 1} onSelect={()=>void move(entry,-1)}><ArrowUp />Monter d’une place</DropdownMenuItem><DropdownMenuItem disabled={loading || selectedHeat.status !== "finished" || entry.finish_position === ranked.length} onSelect={()=>void move(entry,1)}><ArrowDown />Descendre d’une place</DropdownMenuItem><DropdownMenuSeparator/><DropdownMenuItem className="text-red-600" onSelect={()=>void removeFinish(entry)}><Trash2 />Retirer l’arrivée</DropdownMenuItem></DropdownMenuContent></DropdownMenu>
                             </div>
                           </td>
                         </tr>
                       ))}
                     </tbody>
                   </table>
+                  </div>
+                  {!visibleArrivals.length && <p className="p-6 text-center text-sm text-slate-500">Aucun élève pour cette recherche.</p>}
                 </div>
               )}
             </section>
           )}
 
-          {courseView === "exports" && selectedHeat.status === "finished" && (
-            <section className="cross-panel p-4 sm:p-5">
-              <p className="text-xs font-bold uppercase tracking-widest text-[#1154b3]">
-                Course sélectionnée
-              </p>
-              <h3 className="mt-1 text-xl font-bold">Formats de la course sélectionnée</h3>
-              <div className="mt-4 grid gap-3 md:grid-cols-2 xl:grid-cols-3">
-                <article className="rounded-2xl border bg-white p-4">
-                  <Medal className="text-[#1154b3]" />
-                  <h4 className="mt-2 text-lg font-bold">
-                    Classement individuel
-                  </h4>
-                  <div className="mt-4 flex flex-wrap gap-2">
-                    <Select value={visibleCategory} onValueChange={setResultCategory}><SelectTrigger className="w-full"><SelectValue /></SelectTrigger><SelectContent><SelectItem value="all">Toutes les catégories</SelectItem>{gradeGroups.map(group => <SelectItem key={group.category} value={group.category}>{group.category}</SelectItem>)}</SelectContent></Select>
-                    <Button disabled={entriesLoading} onClick={printIndividual}>
-                      <Printer />
-                      PDF ·{" "}
-                      {visibleCategory === "all"
-                        ? "toutes les catégories"
-                        : visibleCategory}
-                    </Button>
-                    <Button
-                      variant="outline"
-                      disabled={loading || entriesLoading}
-                      onClick={() => void downloadResults("individual")}
-                    >
-                      <FileSpreadsheet />
-                      Excel
-                    </Button>
-                    <Button
-                      variant="outline"
-                      onClick={() => void social("individual", false)}
-                    >
-                      <ImageIcon />
-                      Post
-                    </Button>
-                    <Button
-                      variant="outline"
-                      onClick={() => void social("individual", true)}
-                    >
-                      <Download />
-                      Story
-                    </Button>
-                    <Button
-                      variant="outline"
-                      disabled={entriesLoading}
-                      onClick={() => void tvFullCategories()}
-                    >
-                      <ImageIcon />
-                      TV · classements complets
-                    </Button>
-                  </div>
-                  <p className="mt-3 text-xs text-slate-500">TV : deux catégories par écran, classement complet.</p>
-                </article>
-                <article className="rounded-2xl border bg-white p-4">
-                  <Users className="text-[#1154b3]" />
-                  <h4 className="mt-2 text-lg font-bold">
-                    Challenge de cette course
-                  </h4>
-                  <p className="text-sm text-slate-500">Filles + garçons · dispensés exclus.</p>
-                  <div className="mt-4 flex flex-wrap gap-2">
-                    <Button
-                      disabled={!classResults.length || entriesLoading}
-                      onClick={printClasses}
-                    >
-                      <Printer />
-                      Imprimer / PDF
-                    </Button>
-                    <Button
-                      variant="outline"
-                      disabled={
-                        loading || !classResults.length || entriesLoading
-                      }
-                      onClick={() => void downloadResults("classes")}
-                    >
-                      <FileSpreadsheet />
-                      Excel
-                    </Button>
-                    <Button
-                      variant="outline"
-                      disabled={!classResults.length}
-                      onClick={() => void social("classes", false)}
-                    >
-                      <ImageIcon />
-                      Post
-                    </Button>
-                    <Button
-                      variant="outline"
-                      disabled={!classResults.length}
-                      onClick={() => void social("classes", true)}
-                    >
-                      <Download />
-                      Story
-                    </Button>
-                  </div>
-                </article>
-                <article className="rounded-2xl border bg-white p-4">
-                  <ImageIcon className="text-[#1154b3]" />
-                  <h4 className="mt-2 text-lg font-bold">
-                    Télévision · deux courses côte à côte
-                  </h4>
-                  <p className="text-sm text-slate-500">PNG Full HD prêt à diffuser.</p>
-                  <div className="mt-4 space-y-3">
-                    <div className="rounded-xl bg-slate-50 p-3 text-sm">
-                      <span className="text-slate-500">À gauche :</span>{" "}
-                      <b>{selectedHeat.name}</b>
-                    </div>
-                    <Select value={resolvedTvSecondHeatId} onValueChange={setTvSecondHeatId}>
-                      <SelectTrigger className="w-full">
-                        <SelectValue placeholder="Course à afficher à droite" />
-                      </SelectTrigger>
-                      <SelectContent>
-                        {heats
-                          .filter(
-                            (heat) =>
-                              heat.status === "finished" &&
-                              heat.id !== selectedHeat.id,
-                          )
-                          .map((heat) => (
-                            <SelectItem key={heat.id} value={heat.id}>
-                              {heat.name}
-                            </SelectItem>
-                          ))}
-                      </SelectContent>
-                    </Select>
-                    <Button
-                      className="w-full"
-                      disabled={loading || !resolvedTvSecondHeatId}
-                      onClick={() => void tvDuo()}
-                    >
-                      <Download />
-                      PNG TV · deux courses
-                    </Button>
-                  </div>
-                </article>
-                <article className="rounded-2xl border bg-white p-4">
-                  <Printer className="text-[#1154b3]" />
-                  <h4 className="mt-2 text-lg font-bold">Feuille de secours</h4>
-                  <p className="text-sm text-slate-500">30 lignes : arrivée + dossard.</p>
-                  <Button className="mt-4" size="sm" variant="outline" disabled={entriesLoading} onClick={printBackupSheet}><Printer />Imprimer / PDF</Button>
-                </article>
-              </div>
-              {classResults.length > 0 && (
-                <div className="mt-5 rounded-2xl bg-slate-50 p-4">
-                  <div className="flex flex-wrap gap-3">
-                    {classResults.slice(0, 5).map((result, index) => (
-                      <Badge
-                        key={result.className}
-                        className="px-3 py-1.5 text-sm"
-                      >
-                        {index + 1}. {result.className} · {formatChallengeScore(result.score)}
-                      </Badge>
-                    ))}
-                  </div>
-                </div>
-              )}
-            </section>
-          )}
+
         </>
       )}
+
+      <AlertDialog open={!!finishCandidate} onOpenChange={open => { if (!open && !loading) setFinishCandidate(undefined); }}>
+        <AlertDialogContent><AlertDialogHeader><AlertDialogTitle>Terminer « {finishCandidate?.name} » ?</AlertDialogTitle><AlertDialogDescription>Les élèves encore à courir seront déclarés non-finisseurs. Les arrivées déjà enregistrées sont conservées.</AlertDialogDescription></AlertDialogHeader><AlertDialogFooter><AlertDialogCancel disabled={loading}>Continuer la course</AlertDialogCancel><AlertDialogAction disabled={loading} className="bg-red-600 text-white hover:bg-red-700" onClick={e => { e.preventDefault(); void finish(finishCandidate); }}>{loading ? "Clôture…" : "Terminer la course"}</AlertDialogAction></AlertDialogFooter></AlertDialogContent>
+      </AlertDialog>
+      <Dialog open={!!challengeDetail} onOpenChange={open=>{if(!open)setChallengeDetail(undefined);}}><DialogContent><DialogHeader><DialogTitle>{challengeDetail?.className}</DialogTitle><DialogDescription>Détail du challenge interclasses</DialogDescription></DialogHeader>{challengeDetail && <div className="space-y-4"><div className="grid grid-cols-2 gap-3"><div className="rounded-xl bg-slate-50 p-4"><p className="text-xs text-slate-500">Moyenne filles</p><p className="mt-1 text-xl font-bold">{formatChallengeScore(challengeDetail.girlsRatio)}</p><p className="mt-1 text-xs text-slate-500">{challengeDetail.girls} élèves</p></div><div className="rounded-xl bg-slate-50 p-4"><p className="text-xs text-slate-500">Moyenne garçons</p><p className="mt-1 text-xl font-bold">{formatChallengeScore(challengeDetail.boysRatio)}</p><p className="mt-1 text-xs text-slate-500">{challengeDetail.boys} élèves</p></div></div><div className="flex items-center justify-between rounded-xl bg-blue-50 p-4"><span className="font-bold">Score de la classe</span><span className="text-2xl font-bold">{formatChallengeScore(challengeDetail.score)}</span></div><p className="text-sm text-slate-500">{challengeDetail.exempt} dispensé(s) exclus · {challengeDetail.complete ? "Calcul complet" : "Calcul provisoire"}</p></div>}</DialogContent></Dialog>
+      <Dialog open={challengeHelpOpen} onOpenChange={setChallengeHelpOpen}>
+        <DialogContent className="sm:max-w-xl">
+          <DialogHeader><DialogTitle>Comment fonctionne le challenge ?</DialogTitle><DialogDescription>Le plus petit score remporte le challenge interclasses.</DialogDescription></DialogHeader>
+          <div className="space-y-3 text-sm text-slate-600"><p>{challengeRule}</p><p>Le score d’une classe additionne la moyenne des filles et la moyenne des garçons. Les dispensés sont exclus du calcul et les classes de lycée ne participent pas au challenge.</p><p>Les absents reçoivent la dernière place + 1 ; les non-finisseurs la dernière place + 10.</p></div>
+        </DialogContent>
+      </Dialog>
+      <Dialog open={courseDetailsOpen} onOpenChange={setCourseDetailsOpen}>
+        <DialogContent className="sm:max-w-lg">
+          <DialogHeader><DialogTitle>{selectedHeat?.name ?? "Détails de la course"}</DialogTitle><DialogDescription>{selectedHeat ? `${selectedHeat.scheduled_time?.slice(0, 5) || "Horaire libre"} · ${entries.length} engagés` : ""}</DialogDescription></DialogHeader>
+          {selectedHeat && <div className="space-y-4"><div className="grid grid-cols-2 gap-3"><div className="rounded-xl bg-slate-50 p-3"><p className="text-xs text-slate-500">Catégorie</p><p className="mt-1 font-bold">{selectedHeat.sex_filter === "female" ? "Filles" : selectedHeat.sex_filter === "male" ? "Garçons" : "Mixte"}</p></div><div className="rounded-xl bg-slate-50 p-3"><p className="text-xs text-slate-500">Challenge</p><p className="mt-1 font-bold">{selectedHeat.challenge_enabled ? "Activé" : "Désactivé"}</p></div></div><div><p className="text-sm font-bold">Classes ({selectedHeat.selected_classes.length})</p><div className="mt-2 flex max-h-52 flex-wrap gap-2 overflow-y-auto">{selectedHeat.selected_classes.map(className => <Badge key={className} variant="secondary">{className}</Badge>)}</div></div></div>}
+          <DialogFooter><Button variant="outline" onClick={() => { if (selectedHeat) editHeat(selectedHeat); setCourseDetailsOpen(false); }}><Pencil />Modifier</Button><Button onClick={() => setCourseDetailsOpen(false)}>Fermer</Button></DialogFooter>
+        </DialogContent>
+      </Dialog>
 
       <Dialog
         open={createOpen}
@@ -1882,9 +1685,7 @@ export function CourseStep({
               </p>
             )}
             {challengeEnabled && (
-              <p className="mb-4 rounded-xl bg-amber-50 p-3 text-xs leading-relaxed text-slate-600">
-                {challengeRule}
-              </p>
+              <div className="mb-4 flex items-center justify-between rounded-xl bg-amber-50 px-3 py-2 text-sm font-semibold text-amber-900"><span>Challenge interclasses activé</span><Button type="button" size="icon-sm" variant="ghost" aria-label="Règles du challenge" onClick={() => setChallengeHelpOpen(true)}><CircleHelp /></Button></div>
             )}
             {metadataOnlyEdit && (
               <p className="mb-4 rounded-xl border border-blue-200 bg-blue-50 p-3 text-sm text-blue-900">
@@ -2000,21 +1801,21 @@ export function CourseStep({
       <Dialog open={!!socialPreview} onOpenChange={open => { if (!open) { setSocialPreview(undefined); setPreviewIndex(0); } }}>
         <DialogContent className="flex max-h-[calc(100dvh-2rem)] flex-col sm:max-w-5xl">
           <DialogHeader>
-            <DialogTitle>Aperçu {socialPreview?.format === "story" ? "de la story Top 10" : socialPreview?.format === "tv" ? "des classements TV" : "de la publication Top 10"}</DialogTitle>
-            <DialogDescription>{socialPreview?.format === "tv" ? `Deux catégories par écran Full HD · classement complet${socialPreview.pages?.length ? ` · ${socialPreview.pages.length} écran(s)` : ""}.` : "Vérifiez le logo et le Top 10 avant de télécharger le visuel."}</DialogDescription>
+            <DialogTitle>Aperçu {socialPreview?.format === "story" ? "de la story" : socialPreview?.format === "tv" ? "des classements TV" : "de la publication"}</DialogTitle>
+            <DialogDescription>{socialPreview?.format === "tv" ? `Deux catégories par écran Full HD · classement complet${socialPreview.pages?.length ? ` · ${socialPreview.pages.length} écran(s)` : ""}.` : `PNG ${socialPreview?.width} × ${socialPreview?.height}${socialPreview?.pages?.length ? ` · ${socialPreview.pages.length} visuels` : ""}`}</DialogDescription>
           </DialogHeader>
           {activePreview && <div className="min-h-0 overflow-auto rounded-xl bg-slate-100 p-3"><Image unoptimized src={activePreview.dataUrl} alt="Visuel des résultats sur fond blanc" width={socialPreview?.width} height={socialPreview?.height} className="mx-auto h-auto max-h-[65dvh] w-auto max-w-full bg-white object-contain" /></div>}
           {socialPreview?.pages && socialPreview.pages.length > 1 && (
             <div className="flex items-center justify-center gap-3">
               <Button size="sm" variant="outline" disabled={previewIndex === 0} onClick={() => setPreviewIndex(index => Math.max(0, index - 1))}><ChevronLeft />Précédent</Button>
-              <span className="text-sm font-bold">Écran {previewIndex + 1} / {socialPreview.pages.length}</span>
+              <span className="text-sm font-bold">Visuel {previewIndex + 1} / {socialPreview.pages.length}</span>
               <Button size="sm" variant="outline" disabled={previewIndex === socialPreview.pages.length - 1} onClick={() => setPreviewIndex(index => Math.min(socialPreview.pages!.length - 1, index + 1))}>Suivant<ChevronRight /></Button>
             </div>
           )}
           <DialogFooter>
             <Button variant="outline" onClick={() => setSocialPreview(undefined)}>Fermer</Button>
-            <Button variant="outline" onClick={() => downloadPreview(false)}><Download />Télécharger cet écran</Button>
-            {socialPreview?.pages && socialPreview.pages.length > 1 && <Button onClick={() => downloadPreview(true)}><Download />Télécharger les {socialPreview.pages.length} écrans</Button>}
+            <Button variant="outline" onClick={() => downloadPreview(false)}><Download />Télécharger le PNG</Button>
+            {socialPreview?.pages && socialPreview.pages.length > 1 && <Button onClick={() => downloadPreview(true)}><Download />Télécharger les {socialPreview.pages.length} visuels</Button>}
           </DialogFooter>
         </DialogContent>
       </Dialog>

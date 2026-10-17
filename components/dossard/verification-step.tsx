@@ -5,6 +5,7 @@ import { AlertTriangle, Check, CheckCircle2, LockKeyhole, ScanBarcode, ShieldChe
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { StepHeading } from "./step-heading";
+import { HelpDialog } from "./help-dialog";
 import { BarcodePreview } from "./code-preview";
 import { normalizeScannedIdentifier } from "@/lib/dossard/identifiers";
 import { previewElementValue } from "@/lib/dossard/preview";
@@ -89,7 +90,7 @@ export function VerificationStep({
                 {check.status === "ok" ? <Check /> : <AlertTriangle />}
               </span>
             </div>
-            {check.detail && <p className="mt-2 text-sm text-slate-500">{check.detail}</p>}
+            {check.detail && <HelpDialog title={check.label}><p>{check.detail}</p></HelpDialog>}
           </article>
         ))}
       </section>

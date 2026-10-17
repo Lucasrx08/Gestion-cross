@@ -3,6 +3,7 @@ import { useRef, useState } from "react";
 import { Download, Plus, Trash2, Move } from "lucide-react";
 import { toast } from "sonner";
 import { Button } from "@/components/ui/button";
+import { HelpDialog } from "./help-dialog";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { resolveEventBranding } from "@/lib/dossard/event-branding";
@@ -25,7 +26,7 @@ export function PocketEditor({event,onChange,classes}:{event:RaceEvent;onChange:
     setBusy(true);try{const {generatePocketPdf}=await import("@/lib/dossard/print-documents");const bytes=await generatePocketPdf(event,selected);downloadBlob(new Blob([new Uint8Array(bytes)],{type:"application/pdf"}),`${safeFileName(event.name)}-pochettes-classes.pdf`);toast.success(`${selected.length} pochette(s) téléchargée(s).`);}catch(error){toast.error(error instanceof Error?error.message:"Création impossible.");}finally{setBusy(false);}
   };
   return <section className="cross-panel space-y-5 p-5">
-    <div><h2 className="text-xl font-black">Pochettes de classes</h2><p className="text-sm text-slate-500">Une feuille A4 paysage à plier au milieu pour ranger les dossards. Associez plusieurs classes et ajoutez le nom du collègue ou un texte libre. Ces réglages sont sauvegardés avec l’événement.</p></div>
+    <div className="flex items-center gap-2"><h2 className="text-xl font-bold">Pochettes de classes</h2><HelpDialog title="Préparer les pochettes"><p>Chaque pochette est une feuille A4 paysage à plier au milieu. La couverture est à droite et la moitié gauche reste libre pour le pliage.</p><p>Associez une ou plusieurs classes et ajoutez un texte libre, par exemple le nom du collègue. Déplacez ce texte dans l’aperçu ou réglez les positions X et Y.</p></HelpDialog></div>
     <div className="flex flex-wrap gap-2"><Button variant="outline" onClick={create}><Plus/>Créer une pochette</Button><Button variant="outline" disabled={busy||!classes.length} onClick={()=>void generate(true)}><Download/>PDF : une pochette par classe</Button></div>
     {!!pockets.length&&<div className="flex flex-wrap gap-2">{pockets.map((p,i)=><Button key={p.id} variant={p.id===active?.id?"default":"outline"} onClick={()=>setActiveId(p.id)}>{p.classes.join(" + ")||`Pochette ${i+1}`}</Button>)}</div>}
     {active&&<div className="grid gap-5 lg:grid-cols-2">
@@ -33,7 +34,7 @@ export function PocketEditor({event,onChange,classes}:{event:RaceEvent;onChange:
         <fieldset><legend className="mb-2 text-sm font-semibold">Classes à associer à cette pochette</legend><div className="grid max-h-56 grid-cols-2 gap-2 overflow-y-auto rounded-xl border p-3">{classes.map(name=><label key={name} className="flex min-h-10 items-center gap-2 text-sm"><input type="checkbox" checked={active.classes.includes(name)} onChange={e=>update({classes:e.target.checked?[...active.classes,name]:active.classes.filter(c=>c!==name)})}/>{name}</label>)}</div></fieldset>
         <div><Label htmlFor="pocket-text">Texte libre</Label><textarea id="pocket-text" maxLength={240} rows={3} className="mt-2 w-full rounded-lg border p-3 text-sm" placeholder="Ex. : Mme Dupont · Distribution au départ" value={active.text} onChange={e=>update({text:e.target.value})}/></div>
         <div className="grid grid-cols-3 gap-2"><div><Label htmlFor="pocket-x">Position X (%)</Label><Input id="pocket-x" type="number" min={5} max={75} value={active.x} onChange={e=>update({x:Math.max(5,Math.min(75,Number(e.target.value)))})}/></div><div><Label htmlFor="pocket-y">Position Y (%)</Label><Input id="pocket-y" type="number" min={5} max={85} value={active.y} onChange={e=>update({y:Math.max(5,Math.min(85,Number(e.target.value)))})}/></div><div><Label htmlFor="pocket-size">Taille du texte</Label><Input id="pocket-size" type="number" min={10} max={30} value={active.fontSize} onChange={e=>update({fontSize:Math.max(10,Math.min(30,Number(e.target.value)))})}/></div></div>
-        <p className="flex items-center gap-2 text-sm text-slate-500"><Move className="size-4"/>Déplacez le texte dans l’aperçu, au doigt ou à la souris. Les positions X et Y permettent aussi un réglage précis.</p>
+        <p className="flex items-center gap-2 text-sm text-slate-500"><Move className="size-4"/>Déplacez le texte dans l’aperçu.</p>
         <Button variant="outline" onClick={()=>save(pockets.filter(p=>p.id!==active.id))}><Trash2/>Supprimer cette pochette</Button>
       </div>
       <div>
@@ -54,7 +55,7 @@ export function PocketEditor({event,onChange,classes}:{event:RaceEvent;onChange:
             onPointerUp={e=>{dragStart.current=undefined;if(e.currentTarget.hasPointerCapture(e.pointerId))e.currentTarget.releasePointerCapture(e.pointerId);}}
             onPointerCancel={()=>{dragStart.current=undefined;}}>{active.text||"Votre texte libre"}</button>
         </div>
-        <p className="mt-2 text-xs text-slate-500">La couverture est à droite ; la moitié gauche reste libre pour le pliage. Le PDF comprend seulement un repère central de pliage, sans URL ni numéro de page.</p>
+        <p className="mt-2 text-xs text-slate-500">A4 paysage · couverture à droite</p>
       </div>
     </div>}
     {!!pockets.length&&<Button disabled={busy||!pockets.some(p=>p.classes.length)} onClick={()=>void generate(false)}><Download/>{busy?"Création…":"Télécharger mes pochettes personnalisées"}</Button>}

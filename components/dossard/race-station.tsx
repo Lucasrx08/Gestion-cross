@@ -15,6 +15,7 @@ import { toast } from "sonner";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
+import { HelpDialog } from "./help-dialog";
 import {
   isRetryableRaceError,
   raceErrorMessage,
@@ -429,15 +430,10 @@ export function RaceStation({
             <h1 className="mt-2 text-3xl font-bold">
               Quelle partie de la course scannez-vous ?
             </h1>
-            <p className="mx-auto mt-3 max-w-2xl text-slate-500">
-              Aucun rang de départ à calculer. Les postes sont fusionnés
-              automatiquement dans leur ordre : A, puis B, puis C, puis D.
-              Chaque poste doit scanner un tronçon successif de la file
-              d’arrivée, et non des élèves répartis au hasard.
-            </p>
+            <div className="mt-2 flex justify-center"><HelpDialog title="Choisir son poste" label="Comment répartir les postes ?"><p>Le poste A scanne le début de la file d’arrivée. Les postes suivants scannent chacun une portion successive, dans l’ordre B, C puis D.</p><p>Ne répartissez pas les élèves au hasard entre les postes. Le classement commun fusionne les quatre portions dans cet ordre.</p></HelpDialog></div>
             <div className="mx-auto mt-7 grid max-w-2xl gap-4 sm:grid-cols-2">
               <Button
-                className="h-24 text-lg font-bold"
+                className="h-16 text-base font-bold"
                 onClick={() => void join("start")}
               >
                 <Flag />
@@ -445,7 +441,7 @@ export function RaceStation({
               </Button>
               <Button
                 variant="outline"
-                className="h-24 text-lg font-bold"
+                className="h-16 text-base font-bold"
                 onClick={() => void join("continue")}
               >
                 <ScanLine />
@@ -458,30 +454,30 @@ export function RaceStation({
           </section>
         ) : (
           <>
-            <section className="grid gap-3 grid-cols-2 lg:grid-cols-4">
-              <div className="cross-panel p-4">
+            <section className="grid grid-cols-2 gap-2 sm:grid-cols-4">
+              <div className="rounded-xl border bg-white p-3">
                 <p className="text-xs text-slate-500">Votre poste</p>
-                <p className="mt-1 text-3xl font-bold">
+                <p className="mt-1 text-2xl font-bold">
                   {my
                     ? `${letters[my.station_order - 1]} · ${my.station_order}`
                     : "—"}
                 </p>
               </div>
-              <div className="cross-panel p-4">
+              <div className="rounded-xl border bg-white p-3">
                 <p className="text-xs text-slate-500">Scans sur ce poste</p>
-                <p className="mt-1 text-3xl font-bold">
+                <p className="mt-1 text-2xl font-bold">
                   {state?.myScanCount ?? myRecent.length}
                 </p>
               </div>
-              <div className="cross-panel p-4">
+              <div className="rounded-xl border bg-white p-3">
                 <p className="text-xs text-slate-500">Arrivés au total</p>
-                <p className="mt-1 text-3xl font-bold">
+                <p className="mt-1 text-2xl font-bold">
                   {state?.counts.finished ?? 0}
                 </p>
               </div>
-              <div className="cross-panel p-4">
+              <div className="rounded-xl border bg-white p-3">
                 <p className="text-xs text-slate-500">Postes connectés</p>
-                <p className="mt-1 text-3xl font-bold">
+                <p className="mt-1 text-2xl font-bold">
                   {state?.stations.length ?? 0}/4
                 </p>
               </div>
@@ -495,11 +491,6 @@ export function RaceStation({
                   <h1 className="mt-2 text-xl font-bold">
                     Scanner avec le Poste {my?.station_order}
                   </h1>
-                  <p className="mt-1 text-sm text-slate-500">
-                    Les lectures rapprochées sont mises en file puis envoyées
-                    dans l’ordre. Vous pouvez scanner le dossard suivant sans
-                    attendre le rafraîchissement de l’écran.
-                  </p>
                   <div className="mx-auto mt-3 max-w-xl">
                     <Input
                       ref={inputRef}
@@ -523,11 +514,7 @@ export function RaceStation({
                       autoComplete="off"
                       disabled={!connected}
                     />
-                    <p id="bib-help" className="mt-2 text-xs text-slate-500">
-                      Douchette : chaque Entrée ajoute immédiatement la lecture
-                      à la file locale. Saisie manuelle : tapez le numéro puis
-                      validez.
-                    </p>
+                    <div id="bib-help" className="mt-1 flex items-center justify-center gap-1 text-xs text-slate-500"><span>Scanner ou saisir le dossard · Entrée pour valider</span><HelpDialog title="Saisir une arrivée"><p>Avec la douchette, chaque touche Entrée ajoute le dossard à la file. Les scans sont envoyés dans l’ordre, même si vous scannez rapidement.</p><p>Pour une saisie manuelle, tapez le numéro puis validez avec Entrée ou « Ajouter le scan ».</p></HelpDialog></div>
                     {scanError && (
                       <p
                         role="alert"
@@ -582,10 +569,7 @@ export function RaceStation({
             <section className="overflow-hidden rounded-[1.5rem] border bg-white">
               <div className="border-b p-4">
                 <h2 className="font-bold">3 derniers élèves scannés</h2>
-                <p className="text-xs text-slate-500">
-                  La référence A/B/C/D reste fixe même si le rang fusionné
-                  évolue.
-                </p>
+
               </div>
               <div className="divide-y">
                 {!myRecent.length && (
@@ -621,10 +605,7 @@ export function RaceStation({
         {rejected.length > 0 && (
           <section className="cross-panel border-red-200 p-5">
             <h2 className="font-bold text-red-700">Scans refusés à vérifier</h2>
-            <p className="mt-1 text-xs text-slate-500">
-              Les 20 derniers refus de cette session. Aucun de ces scans n’a
-              ajouté une arrivée.
-            </p>
+<p className="mt-1 text-xs text-slate-500">Ces dossards n’ont pas été enregistrés.</p>
             <ul className="mt-3 space-y-2 text-sm">
               {rejected.map((message, index) => (
                 <li key={`${index}-${message}`}>{message}</li>

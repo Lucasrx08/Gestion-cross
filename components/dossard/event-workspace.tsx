@@ -37,7 +37,6 @@ import {
   DropdownMenuSeparator,
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
-import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { EventBrandingDialog } from "./event-branding-dialog";
 import { resolveEventBranding } from "@/lib/dossard/event-branding";
 import { CourseStep } from "./course-step";
@@ -63,9 +62,9 @@ type Step =
 const steps: Array<{ value: Step; label: string; icon: typeof Users }> = [
   { value: "participants", label: "Participants", icon: Users },
   { value: "template", label: "Fond", icon: FileImage },
-  { value: "layout", label: "Dossard", icon: LayoutTemplate },
+  { value: "layout", label: "Composer", icon: LayoutTemplate },
   { value: "verify", label: "Contrôle", icon: CheckCircle2 },
-  { value: "export", label: "PDF dossards", icon: FileOutput },
+  { value: "export", label: "Imprimer", icon: FileOutput },
   { value: "course", label: "Courses & résultats", icon: Flag },
 ];
 
@@ -93,7 +92,6 @@ export function EventWorkspace({
   const [purgeOpen, setPurgeOpen] = useState(false);
   const [serverPurgeOpen, setServerPurgeOpen] = useState(false);
   const [serverPurging, setServerPurging] = useState(false);
-  const current = steps.findIndex((item) => item.value === step);
   const blockers = buildValidationChecks(event).filter(
     (check) => check.status === "error",
   ).length;
@@ -146,7 +144,7 @@ export function EventWorkspace({
         className="sticky top-0 z-40 border-b border-border border-t-4 bg-white shadow-sm"
         style={{ borderTopColor: primary }}
       >
-        <div className="cross-shell flex min-h-16 items-center gap-3 py-2 sm:gap-4">
+        <div className="cross-shell flex h-[4.5rem] items-center gap-3 py-2 sm:gap-4">
           <Button
             size="icon-sm"
             variant="ghost"
@@ -165,7 +163,7 @@ export function EventWorkspace({
             className="size-11 shrink-0 rounded-xl border border-border bg-white object-contain p-1"
           />
           <div className="min-w-0 flex-1">
-            <p className="text-base font-bold leading-snug tracking-tight sm:text-lg">
+            <p className="truncate text-base font-bold leading-snug tracking-tight sm:text-lg">
               {event.name}
             </p>
             <p className="mt-1 text-xs text-muted-foreground sm:text-sm">
@@ -223,18 +221,14 @@ export function EventWorkspace({
       </header>
 
       <main className="cross-shell py-3 sm:py-4">
-        <div className="mb-4 flex flex-wrap items-center justify-between gap-3">
-          <Button
-            variant={step === "overview" ? "default" : "outline"}
-            onClick={() => setStep("overview")}
-          >
-            <LayoutDashboard />
-            Vue d’ensemble
-          </Button>
-          <p className="text-xs text-muted-foreground">
-            Élèves et modèles : cet appareil · Courses : serveur partagé
-          </p>
-        </div>
+        <nav aria-label="Rubriques de l’événement" className="cross-main-nav mb-5 grid grid-cols-4 gap-1 rounded-2xl border bg-white p-1.5">
+          {[
+            { value: "overview" as Step, label: "Accueil", icon: LayoutDashboard, active: step === "overview" },
+            { value: "participants" as Step, label: "Élèves", icon: Users, active: step === "participants" },
+            { value: "export" as Step, label: "Dossards", icon: LayoutTemplate, active: ["template", "layout", "verify", "export"].includes(step) },
+            { value: "course" as Step, label: "Courses", icon: Flag, active: step === "course" },
+          ].map(item => <Button key={item.value} variant={item.active ? "default" : "ghost"} aria-current={item.active ? "page" : undefined} className="h-auto min-h-12 flex-col gap-1 px-2 py-2 text-xs sm:flex-row sm:gap-2 sm:text-sm" onClick={() => setStep(item.value)}><item.icon className="size-4" />{item.label}</Button>)}
+        </nav>
         {saveStatus === "error" && (
           <div
             role="alert"
@@ -252,53 +246,18 @@ export function EventWorkspace({
             </Button>
           </div>
         )}
-        <Tabs value={step} onValueChange={(value) => setStep(value as Step)}>
-          <TabsContent value="overview">
-            <section className="cross-panel mb-6 flex flex-wrap items-center gap-5 p-5 sm:p-6">
-              {branding.logoDataUrl && <Image src={branding.logoDataUrl} alt="Logo de l’événement" width={88} height={88} unoptimized className="max-h-22 w-22 object-contain" />}
-              <div className="min-w-0 flex-1">
-                <h2 className="text-xl font-bold" style={{color: primary}}>Identité visuelle de l’événement</h2>
-                <p className="mt-1 text-sm text-muted-foreground">Un seul en-tête pour les listes, classements, challenges, feuilles de secours et visuels à publier.</p>
-                <p className="mt-2 text-sm font-semibold">{branding.title}</p>
-                <div className="mt-2 flex items-center gap-2"><span className="size-5 rounded-full border" style={{backgroundColor:primary}} /><span className="size-5 rounded-full border" style={{backgroundColor:branding.secondaryColor}} /><span className="text-xs text-muted-foreground">{branding.logoDataUrl ? "Logo personnalisé enregistré" : "Logo de l’événement à ajouter"}</span></div>
-              </div>
-              <Button variant="outline" onClick={() => setBrandingOpen(true)}><Palette />En-tête & identité visuelle</Button>
-            </section>
-            <section className="mb-6 overflow-hidden rounded-[1.75rem] p-6 text-white shadow-lg sm:p-9" style={{backgroundColor: primary}}>
-              <p className="text-xs font-bold uppercase tracking-[.2em] text-white/80">
-                Votre centre d’organisation
-              </p>
-              <h1 className="mt-3 text-3xl font-bold sm:text-4xl">
-                Un cross prêt, du dossard au podium.
-              </h1>
-              <p className="mt-3 max-w-2xl text-sm leading-relaxed text-white/90 sm:text-base">
-                Préparez vos élèves et vos dossards, organisez les départs, puis
-                retrouvez les classements de chaque niveau et le challenge
-                interclasses.
-              </p>
-              <div className="mt-6 flex flex-wrap gap-3">
-                {[
-                  `${event.participants.length} élèves`,
-                  `${levels} niveaux`,
-                  blockers
-                    ? `${blockers} contrôle(s) à traiter`
-                    : "Dossards prêts à imprimer",
-                ].map((label) => (
-                  <span
-                    key={label}
-                    className="rounded-full border border-white/20 bg-white/10 px-4 py-2 text-sm font-semibold"
-                  >
-                    {label}
-                  </span>
-                ))}
-              </div>
-            </section>
-            <div className="mb-6 grid gap-4 md:grid-cols-2">
+        <div>
+          {step === "overview" && <section>
+            <div className="mb-5 flex flex-wrap items-center justify-between gap-3">
+              <h1 className="text-2xl font-bold">Vue d’ensemble</h1>
+              <div className="flex gap-2 text-xs font-semibold"><span className="rounded-full bg-blue-50 px-3 py-2">{event.participants.length} élèves</span><span className="rounded-full bg-slate-100 px-3 py-2">{levels} niveaux</span>{blockers > 0 && <button className="rounded-full bg-amber-100 px-3 py-2 text-amber-900" onClick={() => setStep("verify")}>{blockers} contrôle(s)</button>}</div>
+            </div>
+            <div className="mb-6 grid gap-3 md:grid-cols-2">
               {[
                 {
                   value: "participants" as Step,
                   icon: Users,
-                  title: "1. Préparer les élèves",
+                  title: "Élèves",
                   detail:
                     "Import Excel/CSV, classes, noms et numérotation. Vérifiez les niveaux avant le départ.",
                   action: "Gérer les participants",
@@ -307,7 +266,7 @@ export function EventWorkspace({
                 {
                   value: "template" as Step,
                   icon: LayoutTemplate,
-                  title: "2. Créer vos dossards",
+                  title: "Dossards",
                   detail:
                     "Ajoutez votre fond, disposez les textes, le numéro et les codes. Réutilisez vos modèles.",
                   action: "Personnaliser les dossards",
@@ -316,7 +275,7 @@ export function EventWorkspace({
                 {
                   value: "verify" as Step,
                   icon: ShieldCheck,
-                  title: "3. Vérifier et imprimer",
+                  title: "Contrôles",
                   detail:
                     "Contrôle des doublons, des dimensions et de la lisibilité. Deux dossards A5 par page A4.",
                   action: "Contrôler les dossards",
@@ -325,7 +284,7 @@ export function EventWorkspace({
                 {
                   value: "course" as Step,
                   icon: Flag,
-                  title: "4. Piloter le jour J",
+                  title: "Courses & résultats",
                   detail:
                     "Programme des courses, quatre postes d’arrivée, classements distincts par niveau et challenge.",
                   action: "Ouvrir courses & résultats",
@@ -335,7 +294,7 @@ export function EventWorkspace({
                 <button
                   key={card.value}
                   type="button"
-                  className="cross-panel group flex items-start gap-4 p-6 text-left transition hover:-translate-y-0.5 hover:border-blue-300 hover:shadow-lg focus-visible:outline-2 focus-visible:outline-blue-600"
+                  className="cross-panel group flex items-center gap-4 p-5 text-left transition hover:border-blue-300 hover:shadow-md focus-visible:outline-2 focus-visible:outline-blue-600"
                   onClick={() => setStep(card.value)}
                 >
                   <span
@@ -345,10 +304,7 @@ export function EventWorkspace({
                   </span>
                   <div>
                     <h2 className="text-lg font-bold">{card.title}</h2>
-                    <p className="mt-2 text-sm leading-relaxed text-slate-500">
-                      {card.detail}
-                    </p>
-                    <span className="mt-4 inline-flex items-center gap-2 text-sm font-bold text-[#1154b3]">
+                    <span className="mt-2 inline-flex items-center gap-2 text-sm font-medium text-primary">
                       {card.action}
                       <ArrowRight className="size-4 transition group-hover:translate-x-1" />
                     </span>
@@ -356,31 +312,21 @@ export function EventWorkspace({
                 </button>
               ))}
             </div>
-          </TabsContent>
-          <div className="cross-panel mb-4 p-1.5">
-            <TabsList
-              aria-label="Étapes du cross"
-              className="cross-steps grid w-full bg-transparent"
-            >
-              {steps.map((item) => {
-                const Icon = item.icon;
-                return (
-                  <TabsTrigger
-                    key={item.value}
-                    value={item.value}
-                    className="cross-step min-w-0 flex-col gap-1.5 rounded-xl px-2 py-3 text-xs font-semibold sm:flex-row sm:gap-2 sm:text-sm"
-                  >
-                    <Icon className="size-4 shrink-0 sm:size-[18px]" />
-                    <span className="whitespace-normal text-center leading-tight">
-                      {item.label}
-                    </span>
-                  </TabsTrigger>
-                );
-              })}
-            </TabsList>
-          </div>
+            <section className="cross-panel mb-6 flex flex-wrap items-center gap-5 p-5 sm:p-6">
+              {branding.logoDataUrl && <Image src={branding.logoDataUrl} alt="Logo de l’événement" width={88} height={88} unoptimized className="max-h-22 w-22 object-contain" />}
+              <div className="min-w-0 flex-1">
+                <h2 className="text-xl font-bold" style={{color: primary}}>Identité visuelle de l’événement</h2>
+                <p className="mt-2 text-sm font-semibold">{branding.title}</p>
+                <div className="mt-2 flex items-center gap-2"><span className="size-5 rounded-full border" style={{backgroundColor:primary}} /><span className="size-5 rounded-full border" style={{backgroundColor:branding.secondaryColor}} /><span className="text-xs text-muted-foreground">{branding.logoDataUrl ? "Logo personnalisé enregistré" : "Logo de l’événement à ajouter"}</span></div>
+              </div>
+              <Button variant="outline" onClick={() => setBrandingOpen(true)}><Palette />Modifier l’identité</Button>
+            </section>
+          </section>}
+          {["template", "layout", "verify", "export"].includes(step) && <nav aria-label="Outils des dossards" className="mb-5 flex gap-1 overflow-x-auto rounded-xl bg-slate-100 p-1">
+            {steps.filter(item => ["template", "layout", "verify", "export"].includes(item.value)).map(item => <Button key={item.value} size="sm" variant={step === item.value ? "outline" : "ghost"} aria-current={step === item.value ? "page" : undefined} className="min-h-11 flex-1 shrink-0" onClick={() => setStep(item.value)}><item.icon className="size-4" />{item.label}</Button>)}
+          </nav>}
 
-          <TabsContent value="participants">
+          {step === "participants" && <section>
             <ParticipantsStep
               event={event}
               onChange={onChange}
@@ -393,23 +339,23 @@ export function EventWorkspace({
               issueFilter={participantIssueFilter}
               onIssueFilterChange={setParticipantIssueFilter}
             />
-          </TabsContent>
-          <TabsContent value="template">
+          </section>}
+          {step === "template" && <section>
             <TemplateStep
               event={event}
               templates={templates}
               onChange={onChange}
               onSaveTemplate={onSaveTemplate}
             />
-          </TabsContent>
-          <TabsContent value="layout">
+          </section>}
+          {step === "layout" && <section>
             <LayoutStep
               event={event}
               onChange={onChange}
               onSaveTemplate={onSaveTemplate}
             />
-          </TabsContent>
-          <TabsContent value="verify">
+          </section>}
+          {step === "verify" && <section>
             <VerificationStep
               event={event}
               onContinue={() => setStep("export")}
@@ -418,8 +364,8 @@ export function EventWorkspace({
                 setStep("participants");
               }}
             />
-          </TabsContent>
-          <TabsContent value="export">
+          </section>}
+          {step === "export" && <section>
             <ExportStep
               key={singleId ?? "general"}
               event={event}
@@ -427,32 +373,12 @@ export function EventWorkspace({
               onChange={onChange}
               initialSingleId={singleId}
             />
-          </TabsContent>
-          <TabsContent value="course">
+          </section>}
+          {step === "course" && <section>
             <CourseStep event={event} onChange={onChange} />
-          </TabsContent>
-        </Tabs>
+          </section>}
+        </div>
 
-        {step !== "overview" && (
-          <nav className="mt-8 flex flex-wrap items-center justify-between gap-3 border-t border-border pt-5">
-            <Button
-              variant="outline"
-              disabled={current <= 0}
-              onClick={() => setStep(steps[current - 1].value)}
-            >
-              Étape précédente
-            </Button>
-            <p className="hidden text-sm font-medium text-muted-foreground sm:block">
-              Étape {current + 1} / {steps.length}
-            </p>
-            <Button
-              disabled={current >= steps.length - 1}
-              onClick={() => setStep(steps[current + 1].value)}
-            >
-              Étape suivante
-            </Button>
-          </nav>
-        )}
       </main>
 
       <AlertDialog open={purgeOpen} onOpenChange={setPurgeOpen}>

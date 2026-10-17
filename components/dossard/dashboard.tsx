@@ -2,7 +2,7 @@
 
 import { useMemo, useState } from "react";
 import Image from "next/image";
-import { ArrowUpRight, CalendarDays, ChevronRight, Flag, MapPin, Medal, Plus, QrCode, ScanLine, Trash2, Users } from "lucide-react";
+import { ArrowUpRight, CalendarDays, ChevronRight, Flag, MapPin, Plus, QrCode, Trash2, Users } from "lucide-react";
 import { AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent, AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle } from "@/components/ui/alert-dialog";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
@@ -43,21 +43,19 @@ export function Dashboard({ events, templates, onCreate, onOpen, onDelete, onJoi
 
   return (
     <main className="cross-shell py-6 sm:py-9">
-      <section className="cross-panel grid overflow-hidden lg:grid-cols-[1.5fr_1fr]">
-        <div className="p-6 sm:p-9 lg:p-11">
+      <section className="cross-panel grid overflow-hidden sm:grid-cols-[1fr_auto]">
+        <div className="p-5 sm:p-6">
           <span className="inline-flex items-center gap-2 rounded-full bg-blue-50 px-3 py-1.5 text-xs font-bold text-primary"><span className="size-2 rounded-full bg-[#fed60b]" />Votre cross, bien organisé</span>
-          <h1 className="mt-5 max-w-2xl text-[clamp(2rem,4.3vw,3.6rem)] font-bold leading-[1.1] tracking-[-.045em]">Du premier dossard<br className="hidden sm:block" /> au <span className="text-primary">dernier arrivé.</span></h1>
-          <p className="mt-5 max-w-xl text-base leading-relaxed text-muted-foreground">Préparez votre événement à votre rythme. Le jour du cross, tout est prêt pour les courses et leurs résultats.</p>
+          <h1 className="mt-5 max-w-2xl text-[clamp(1.75rem,3vw,2.5rem)] font-bold leading-[1.1] tracking-[-.045em]">Du premier dossard<br className="hidden sm:block" /> au <span className="text-primary">dernier arrivé.</span></h1>
           <div className="cross-actions mt-7">
             <Button size="lg" onClick={() => setCreateOpen(true)}><Plus />Créer un cross</Button>
             <Button size="lg" variant="outline" onClick={() => setJoinOpen(true)}><QrCode />Rejoindre une course</Button>
           </div>
-          <p className="mt-5 flex items-center gap-2 text-xs font-medium text-muted-foreground"><span className="size-1.5 shrink-0 rounded-full bg-primary" />Participants, dossards, arrivées et classements</p>
         </div>
-        <div className="relative flex flex-col items-center justify-center gap-4 border-t border-blue-100 bg-[#f0f5ff] px-6 py-7 lg:border-l lg:border-t-0">
+        <div className="relative hidden items-center justify-center border-l border-blue-100 bg-[#f0f5ff] px-7 py-5 sm:flex">
           <div aria-hidden className="absolute inset-x-7 top-0 h-1 rounded-b-full bg-[#fed60b]" />
-          <Image src={publicAsset("/logo-bon-sauveur-cross.png")} alt="Cross du Bon Sauveur — Saint-Lô" width={300} height={300} priority className="size-44 rounded-[1.75rem] bg-white object-contain shadow-sm sm:size-60 lg:size-72" />
-          <div className="flex items-center gap-2 rounded-full border border-blue-100 bg-white px-4 py-2 text-sm font-semibold text-[#173970]"><Flag className="size-4 text-primary" />Prêts pour le départ</div>
+          <Image src={publicAsset("/logo-bon-sauveur-cross.png")} alt="Cross du Bon Sauveur — Saint-Lô" width={300} height={300} priority className="size-32 rounded-2xl bg-white object-contain sm:size-40" />
+
         </div>
       </section>
 
@@ -73,7 +71,7 @@ export function Dashboard({ events, templates, onCreate, onOpen, onDelete, onJoi
       <section className="mt-9">
         <div className="mb-5 flex flex-wrap items-center justify-between gap-4"><div><p className="cross-eyebrow">Votre espace d’organisation</p><h2 className="mt-1 text-2xl font-bold tracking-tight">Mes cross</h2></div>{events.length > 0 && <Button variant="outline" onClick={() => setCreateOpen(true)}><Plus />Nouveau cross</Button>}</div>
         {!events.length ? (
-          <div className="cross-panel flex flex-col items-center p-7 text-center sm:p-10"><span className="cross-icon bg-[#fff5bc]"><Flag className="size-6" /></span><h3 className="mt-4 text-xl font-bold">Votre prochain cross commence ici</h3><p className="mt-2 max-w-lg text-sm leading-relaxed text-muted-foreground">Ajoutez votre événement, importez les élèves et préparez les courses. Vous retrouverez tout dans cet espace.</p><Button className="mt-5" onClick={() => setCreateOpen(true)}>Créer mon premier cross <ArrowUpRight /></Button></div>
+          <div className="cross-panel flex flex-col items-center p-7 text-center sm:p-10"><span className="cross-icon bg-[#fff5bc]"><Flag className="size-6" /></span><h3 className="mt-4 text-xl font-bold">Votre prochain cross commence ici</h3><Button className="mt-5" onClick={() => setCreateOpen(true)}>Créer mon premier cross <ArrowUpRight /></Button></div>
         ) : (
           <div className="grid gap-4 md:grid-cols-2 xl:grid-cols-3">
             {events.map((event) => (
@@ -88,9 +86,6 @@ export function Dashboard({ events, templates, onCreate, onOpen, onDelete, onJoi
         )}
       </section>
 
-      <section aria-label="Les trois temps du cross" className="mt-9 grid gap-4 border-t border-border pt-7 md:grid-cols-3">
-        {[{ icon: Users, title: "Avant le départ", text: "Importez les élèves et préparez les dossards et les courses." }, { icon: ScanLine, title: "Sur l’arrivée", text: "Scannez ou saisissez les dossards depuis vos postes d’arrivée." }, { icon: Medal, title: "Après la course", text: "Retrouvez les classements et le challenge interclasses." }].map((item) => <div key={item.title} className="flex items-start gap-3"><span className="cross-icon size-10 bg-white"><item.icon className="size-5" /></span><div><h3 className="text-sm font-bold">{item.title}</h3><p className="mt-1 text-sm leading-relaxed text-muted-foreground">{item.text}</p></div></div>)}
-      </section>
       <footer className="mt-8 flex flex-wrap items-center justify-between gap-2 py-5 text-xs text-muted-foreground"><span className="font-semibold text-primary">Gestion Cross</span><span>Créé par L. RIGAUX</span></footer>
 
       <Dialog open={createOpen} onOpenChange={(open) => { setCreateOpen(open); if (!open) reset(); }}>
