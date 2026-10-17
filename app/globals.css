@@ -1,4 +1,8 @@
-@import "tailwindcss";
+@import "tailwindcss" source(none);
+@source "../app";
+@source "../components";
+@source "../lib";
+@source "../hooks";
 @import "tw-animate-css";
 @import "../vendor/shadcn-tailwind-4.13.0.css";
 @font-face{font-family:"DejaVu Sans";src:url("../public/fonts/DejaVuSans.ttf") format("truetype");font-weight:400;font-display:swap}

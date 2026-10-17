@@ -19,6 +19,12 @@ async function files(directory, prefix = "") {
 }
 
 const output = join(root, "out");
+if (process.argv.includes("--build")) {
+  await rm(output, { recursive: true, force: true });
+  execFileSync(process.execPath, [join(root, "node_modules/next/dist/bin/next"), "build"], {
+    cwd: root, stdio: "inherit", env: { ...process.env, GITHUB_PAGES: "true" },
+  });
+}
 await readFile(join(output, "index.html"));
 const paths = await files(output);
 if (paths.some(path => !allowed(path))) throw new Error("La compilation contient un chemin inattendu ; publication interrompue.");
