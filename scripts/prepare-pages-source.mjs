@@ -21,6 +21,7 @@ async function files(directory, prefix = "") {
 const output = join(root, "out");
 if (process.argv.includes("--build")) {
   await rm(output, { recursive: true, force: true });
+  await rm(join(root, ".next"), { recursive: true, force: true });
   execFileSync(process.execPath, [join(root, "node_modules/next/dist/bin/next"), "build"], {
     cwd: root, stdio: "inherit", env: { ...process.env, GITHUB_PAGES: "true" },
   });

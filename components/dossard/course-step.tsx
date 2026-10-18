@@ -1159,6 +1159,7 @@ export function CourseStep({
       link.click();
     });
   };
+  const hasFinishedCourses = heats.some((heat) => heat.status === "finished");
   const courseExportTiles = selectedHeat?.status === "finished" && <>
                 <article className="rounded-2xl border bg-white p-4">
                   <Medal className="text-[#1154b3]" />
@@ -1224,12 +1225,6 @@ export function CourseStep({
                       PNG TV · deux courses
                     </Button>
                   </div>
-                </article>
-                <article className="rounded-2xl border bg-white p-4">
-                  <Printer className="text-[#1154b3]" />
-                  <h4 className="mt-2 text-lg font-bold">Feuille de secours</h4>
-                  <p className="text-sm text-slate-500">30 lignes : arrivée + dossard.</p>
-                  <Button className="mt-4" size="sm" variant="outline" disabled={entriesLoading} onClick={printBackupSheet}><Printer />Imprimer / PDF</Button>
                 </article>
   </>;
   if (ownerLoading)
@@ -1367,13 +1362,13 @@ export function CourseStep({
           {challengeLoading ? <p className="p-5" role="status">Calcul des moyennes filles et garçons…</p> : challengeError ? <p className="p-5 text-red-700" role="alert">{challengeError}</p> : !overallResults.length ? <p className="p-5 text-sm text-slate-500">{challengeGrade === "all" ? "Le challenge apparaîtra après la fin d’une course avec challenge activé." : `Aucun résultat de challenge pour le niveau ${challengeGradeLabel}.`}</p> : <div className="cross-scroll"><table className="cross-table w-full"><thead><tr className="bg-slate-50"><th>Rang</th><th>Classe</th><th>Score</th><th className="text-right">Détail</th></tr></thead><tbody>{overallResults.map((result, index) => <tr key={classKey(result.className)}><td className="font-bold text-primary">{result.complete ? index + 1 : "—"}</td><td><span className="font-bold">{result.className}</span>{!result.complete && <span className="mt-0.5 block text-xs text-amber-700">{result.unknown ? "Sexe à renseigner" : "Provisoire"}</span>}</td><td className="font-bold tabular-nums">{formatChallengeScore(result.score)}</td><td className="text-right"><Button size="icon" variant="ghost" aria-label={`Voir le calcul de ${result.className}`} onClick={() => setChallengeDetail(result)}><ChevronRight /></Button></td></tr>)}</tbody></table></div>}
         </section>
       )}
-      {courseView === "exports" && heats.some((heat) => heat.status === "finished") && (
+      {courseView === "exports" && heats.length > 0 && (
         <section className="cross-panel p-4 sm:p-5">
           <h2 className="text-xl font-bold">Téléchargements</h2>
           <div className="mt-4 grid gap-3 md:grid-cols-2 xl:grid-cols-3">
             <article className="rounded-2xl border bg-white p-4">
               <h3 className="font-bold">Toutes les courses</h3>
-              <DropdownMenu><DropdownMenuTrigger asChild><Button className="mt-3 w-full" disabled={loading || printingDocument}><Download />Choisir le format</Button></DropdownMenuTrigger><DropdownMenuContent align="start"><DropdownMenuItem onClick={() => void printAllIndividuals()}><Printer />PDF complet</DropdownMenuItem><DropdownMenuItem onClick={() => void downloadResults("individual", true)}><FileSpreadsheet />Excel complet</DropdownMenuItem></DropdownMenuContent></DropdownMenu>
+              <DropdownMenu><DropdownMenuTrigger asChild><Button className="mt-3 w-full" disabled={loading || printingDocument || !hasFinishedCourses}><Download />Choisir le format</Button></DropdownMenuTrigger><DropdownMenuContent align="start"><DropdownMenuItem onClick={() => void printAllIndividuals()}><Printer />PDF complet</DropdownMenuItem><DropdownMenuItem onClick={() => void downloadResults("individual", true)}><FileSpreadsheet />Excel complet</DropdownMenuItem></DropdownMenuContent></DropdownMenu>
             </article>
             <article className="rounded-2xl border bg-white p-4">
               <h3 className="font-bold">Challenge interclasses</h3>
@@ -1384,6 +1379,12 @@ export function CourseStep({
               <ExportMenu disabled={loading || challengeLoading || !!challengeError || !allOverallResults.length} onPdf={() => printOverall(resolvedChallengeExportGrade)} onExcel={() => void downloadResults("classes", true, resolvedChallengeExportGrade)} onPost={() => void social("classes", false, true, resolvedChallengeExportGrade)} onStory={() => void social("classes", true, true, resolvedChallengeExportGrade)} />
             </article>
             {courseExportTiles}
+            {selectedHeat && <article className="rounded-2xl border bg-white p-4">
+              <Printer className="text-[#1154b3]" />
+              <h3 className="mt-2 text-lg font-bold">Feuille de secours</h3>
+              <p className="text-sm text-slate-500">30 lignes : arrivée + dossard.</p>
+              <Button className="mt-4" size="sm" variant="outline" disabled={entriesLoading} onClick={printBackupSheet}><Printer />Imprimer / PDF</Button>
+            </article>}
           </div>
         </section>
       )}
@@ -1429,8 +1430,8 @@ export function CourseStep({
             ].map(item => <button key={item.value} type="button" className="cross-panel flex items-center gap-3 p-4 text-left transition hover:border-primary hover:shadow-sm" onClick={() => setCourseView(item.value)}><span className="cross-icon"><item.icon className="size-5" /></span><span className="min-w-0 flex-1"><span className="block font-bold">{item.title}</span><span className="mt-1 block text-xs text-slate-500">{item.detail}</span></span><ChevronRight className="size-4 text-slate-400" /></button>)}
           </div>}
 
-          {courseView !== "manage" && selectedHeat.status === "draft" && <p className="rounded-xl border border-dashed p-4 text-sm text-slate-500">Course prête à démarrer.</p>}
-          {courseView === "exports" && selectedHeat.status === "running" && <p className="cross-panel p-5 text-sm text-slate-500">Les exports seront disponibles après la fin de cette course.</p>}
+          {(courseView === "results" || courseView === "arrival") && selectedHeat.status === "draft" && <p className="rounded-xl border border-dashed p-4 text-sm text-slate-500">Course prête à démarrer.</p>}
+          {courseView === "exports" && selectedHeat.status !== "finished" && <p className="text-sm text-slate-500">Les classements et visuels de cette course seront disponibles après sa clôture.</p>}
 
           {courseView === "manage" && selectedHeat.status === "running" && stations.length > 0 && (
             <section className="cross-panel p-5 sm:p-6">
