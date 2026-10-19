@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useMemo, useState, useRef } from "react";
+import { useEffect, useMemo, useState, useRef, type CSSProperties } from "react";
 import QRCode from "qrcode";
 import Image from "next/image";
 import {
@@ -9,6 +9,7 @@ import {
   ChevronRight,
   ArrowUp,
   CircleHelp,
+  ClipboardList,
   Cloud,
   Copy,
   Download,
@@ -17,9 +18,11 @@ import {
   Image as ImageIcon,
   Link2,
   ListOrdered,
+  Layers3,
   Loader2,
   Medal,
   MoreHorizontal,
+  Monitor,
   Palette,
   Pencil,
   Play,
@@ -28,6 +31,7 @@ import {
   Search,
   Share2,
   Trash2,
+  Trophy,
   Users,
 } from "lucide-react";
 import { toast } from "sonner";
@@ -43,13 +47,13 @@ import {
 } from "@/components/ui/dialog";
 import { AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent, AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle } from "@/components/ui/alert-dialog";
 import { HelpDialog } from "./help-dialog";
+import { ActionTile } from "./action-tile";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import {
   DropdownMenu,
   DropdownMenuContent,
   DropdownMenuItem,
-  DropdownMenuLabel,
   DropdownMenuSeparator,
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
@@ -148,7 +152,17 @@ function loadCanvasImage(src: string) {
   });
 }
 
-function ExportMenu({ disabled, socialDisabled, onPdf, onExcel, onPost, onStory }: {
+const exportOptions = [
+  { value: "all", title: "Toutes les courses", description: "PDF et Excel complets", icon: Layers3 },
+  { value: "challenge", title: "Challenge interclasses", description: "Complet ou par niveau", icon: Trophy },
+  { value: "individual", title: "Classement individuel", description: "PDF, Excel, publication et story", icon: Medal },
+  { value: "course-challenge", title: "Challenge de la course", description: "PDF, Excel, publication et story", icon: Users },
+  { value: "tv", title: "Télévision", description: "Classements complets ou deux courses", icon: Monitor },
+  { value: "backup", title: "Feuille de secours", description: "Arrivée commune et numéro de dossard", icon: ClipboardList },
+] as const;
+type ExportPanel = (typeof exportOptions)[number]["value"];
+
+function ExportFormats({ disabled, socialDisabled, onPdf, onExcel, onPost, onStory }: {
   disabled?: boolean;
   socialDisabled?: boolean;
   onPdf: () => void;
@@ -156,7 +170,17 @@ function ExportMenu({ disabled, socialDisabled, onPdf, onExcel, onPost, onStory 
   onPost: () => void;
   onStory: () => void;
 }) {
-  return <DropdownMenu><DropdownMenuTrigger asChild><Button size="sm" className="mt-2 w-full" disabled={disabled}><Download />Choisir le format</Button></DropdownMenuTrigger><DropdownMenuContent align="start" className="min-w-48"><DropdownMenuLabel>Document</DropdownMenuLabel><DropdownMenuItem onClick={onPdf}><Printer />PDF</DropdownMenuItem><DropdownMenuItem onClick={onExcel}><FileSpreadsheet />Excel</DropdownMenuItem><DropdownMenuSeparator /><DropdownMenuLabel>{socialDisabled ? "Choisir une catégorie pour les visuels" : "Réseaux sociaux"}</DropdownMenuLabel><DropdownMenuItem disabled={socialDisabled} onClick={onPost}><ImageIcon />Publication</DropdownMenuItem><DropdownMenuItem disabled={socialDisabled} onClick={onStory}><ImageIcon />Story</DropdownMenuItem></DropdownMenuContent></DropdownMenu>;
+  return <div className="space-y-3">
+    <div className="grid grid-cols-2 gap-3">
+      {[
+        { label: "PDF", icon: Printer, action: onPdf, unavailable: disabled },
+        { label: "Excel", icon: FileSpreadsheet, action: onExcel, unavailable: disabled },
+        { label: "Publication", icon: ImageIcon, action: onPost, unavailable: disabled || socialDisabled },
+        { label: "Story", icon: ImageIcon, action: onStory, unavailable: disabled || socialDisabled },
+      ].map(format => <Button key={format.label} variant="outline" className="h-16 justify-start gap-3 rounded-xl px-4" disabled={format.unavailable} onClick={format.action}><format.icon className="size-5" />{format.label}</Button>)}
+    </div>
+    {socialDisabled && <p className="text-xs text-muted-foreground">Choisissez une catégorie pour créer une publication ou une story.</p>}
+  </div>;
 }
 
 export function CourseStep({
@@ -246,6 +270,7 @@ export function CourseStep({
   const [finishCandidate, setFinishCandidate] = useState<CloudHeat>();
   const [arrivalSearch, setArrivalSearch] = useState("");
   const [challengeDetail, setChallengeDetail] = useState<ReturnType<typeof overallChallenge>[number]>();
+  const [exportPanel, setExportPanel] = useState<ExportPanel>();
   const allOverallResults = overallChallenge(challengeCourses);
   const overallResults = overallChallenge(challengeCourses, challengeGrade);
   const challengeGrades = [...new Set(["6e", "5e", "4e", "3e", ...allOverallResults.map(result => gradeCategory(result.className))])].sort(compareCategories);
@@ -1160,73 +1185,9 @@ export function CourseStep({
     });
   };
   const hasFinishedCourses = heats.some((heat) => heat.status === "finished");
-  const courseExportTiles = selectedHeat?.status === "finished" && <>
-                <article className="rounded-2xl border bg-white p-4">
-                  <Medal className="text-[#1154b3]" />
-                  <h4 className="mt-2 text-lg font-bold">
-                    Classement individuel
-                  </h4>
-                  <div className="mt-4 flex flex-wrap gap-2">
-                    <Select value={visibleCategory} onValueChange={setResultCategory}><SelectTrigger className="w-full"><SelectValue /></SelectTrigger><SelectContent><SelectItem value="all">Toutes les catégories</SelectItem>{gradeGroups.map(group => <SelectItem key={group.category} value={group.category}>{group.category}</SelectItem>)}</SelectContent></Select>
-                    <ExportMenu disabled={loading || entriesLoading} socialDisabled={selectedGroups.length !== 1} onPdf={printIndividual} onExcel={() => void downloadResults("individual")} onPost={() => void social("individual", false)} onStory={() => void social("individual", true)} />
-                    <Button
-                      variant="outline"
-                      disabled={entriesLoading}
-                      onClick={() => void tvFullCategories()}
-                    >
-                      <ImageIcon />
-                      TV · classements complets
-                    </Button>
-                  </div>
-                  <p className="mt-3 text-xs text-slate-500">TV : deux catégories par écran, classement complet.</p>
-                </article>
-                <article className="rounded-2xl border bg-white p-4">
-                  <Users className="text-[#1154b3]" />
-                  <h4 className="mt-2 text-lg font-bold">
-                    Challenge de cette course
-                  </h4>
-                  <ExportMenu disabled={loading || !classResults.length || entriesLoading} onPdf={printClasses} onExcel={() => void downloadResults("classes")} onPost={() => void social("classes", false)} onStory={() => void social("classes", true)} />
-                </article>
-                <article className="rounded-2xl border bg-white p-4">
-                  <ImageIcon className="text-[#1154b3]" />
-                  <h4 className="mt-2 text-lg font-bold">
-                    Télévision · deux courses côte à côte
-                  </h4>
-                  <p className="text-sm text-slate-500">PNG Full HD prêt à diffuser.</p>
-                  <div className="mt-4 space-y-3">
-                    <div className="rounded-xl bg-slate-50 p-3 text-sm">
-                      <span className="text-slate-500">À gauche :</span>{" "}
-                      <b>{selectedHeat.name}</b>
-                    </div>
-                    <Select value={resolvedTvSecondHeatId} onValueChange={setTvSecondHeatId}>
-                      <SelectTrigger className="w-full">
-                        <SelectValue placeholder="Course à afficher à droite" />
-                      </SelectTrigger>
-                      <SelectContent>
-                        {heats
-                          .filter(
-                            (heat) =>
-                              heat.status === "finished" &&
-                              heat.id !== selectedHeat.id,
-                          )
-                          .map((heat) => (
-                            <SelectItem key={heat.id} value={heat.id}>
-                              {heat.name}
-                            </SelectItem>
-                          ))}
-                      </SelectContent>
-                    </Select>
-                    <Button
-                      className="w-full"
-                      disabled={loading || !resolvedTvSecondHeatId}
-                      onClick={() => void tvDuo()}
-                    >
-                      <Download />
-                      PNG TV · deux courses
-                    </Button>
-                  </div>
-                </article>
-  </>;
+  const activeExportOption = exportOptions.find(option => option.value === exportPanel);
+  const exportNeedsCourse = exportPanel !== undefined && exportPanel !== "all" && exportPanel !== "challenge";
+  const exportBusy = loading || entriesLoading || printingDocument;
   if (ownerLoading)
     return (
       <section className="grid min-h-48 place-items-center text-slate-500">
@@ -1362,29 +1323,11 @@ export function CourseStep({
           {challengeLoading ? <p className="p-5" role="status">Calcul des moyennes filles et garçons…</p> : challengeError ? <p className="p-5 text-red-700" role="alert">{challengeError}</p> : !overallResults.length ? <p className="p-5 text-sm text-slate-500">{challengeGrade === "all" ? "Le challenge apparaîtra après la fin d’une course avec challenge activé." : `Aucun résultat de challenge pour le niveau ${challengeGradeLabel}.`}</p> : <div className="cross-scroll"><table className="cross-table w-full"><thead><tr className="bg-slate-50"><th>Rang</th><th>Classe</th><th>Score</th><th className="text-right">Détail</th></tr></thead><tbody>{overallResults.map((result, index) => <tr key={classKey(result.className)}><td className="font-bold text-primary">{result.complete ? index + 1 : "—"}</td><td><span className="font-bold">{result.className}</span>{!result.complete && <span className="mt-0.5 block text-xs text-amber-700">{result.unknown ? "Sexe à renseigner" : "Provisoire"}</span>}</td><td className="font-bold tabular-nums">{formatChallengeScore(result.score)}</td><td className="text-right"><Button size="icon" variant="ghost" aria-label={`Voir le calcul de ${result.className}`} onClick={() => setChallengeDetail(result)}><ChevronRight /></Button></td></tr>)}</tbody></table></div>}
         </section>
       )}
-      {courseView === "exports" && heats.length > 0 && (
-        <section className="cross-panel p-4 sm:p-5">
+      {courseView === "exports" && (
+        <section className="space-y-4" aria-label="Supports à télécharger">
           <h2 className="text-xl font-bold">Téléchargements</h2>
-          <div className="mt-4 grid gap-3 md:grid-cols-2 xl:grid-cols-3">
-            <article className="rounded-2xl border bg-white p-4">
-              <h3 className="font-bold">Toutes les courses</h3>
-              <DropdownMenu><DropdownMenuTrigger asChild><Button className="mt-3 w-full" disabled={loading || printingDocument || !hasFinishedCourses}><Download />Choisir le format</Button></DropdownMenuTrigger><DropdownMenuContent align="start"><DropdownMenuItem onClick={() => void printAllIndividuals()}><Printer />PDF complet</DropdownMenuItem><DropdownMenuItem onClick={() => void downloadResults("individual", true)}><FileSpreadsheet />Excel complet</DropdownMenuItem></DropdownMenuContent></DropdownMenu>
-            </article>
-            <article className="rounded-2xl border bg-white p-4">
-              <h3 className="font-bold">Challenge interclasses</h3>
-              <Select value={resolvedChallengeExportGrade} onValueChange={setChallengeExportGrade} disabled={!allOverallResults.length}>
-                <SelectTrigger aria-label="Périmètre du challenge à exporter" className="mt-3 w-full"><SelectValue /></SelectTrigger>
-                <SelectContent><SelectItem value="all">Challenge complet · hors lycée</SelectItem>{challengeExportGrades.map(grade => <SelectItem key={grade} value={grade}>{gradeLabels[grade] ?? grade}</SelectItem>)}</SelectContent>
-              </Select>
-              <ExportMenu disabled={loading || challengeLoading || !!challengeError || !allOverallResults.length} onPdf={() => printOverall(resolvedChallengeExportGrade)} onExcel={() => void downloadResults("classes", true, resolvedChallengeExportGrade)} onPost={() => void social("classes", false, true, resolvedChallengeExportGrade)} onStory={() => void social("classes", true, true, resolvedChallengeExportGrade)} />
-            </article>
-            {courseExportTiles}
-            {selectedHeat && <article className="rounded-2xl border bg-white p-4">
-              <Printer className="text-[#1154b3]" />
-              <h3 className="mt-2 text-lg font-bold">Feuille de secours</h3>
-              <p className="text-sm text-slate-500">30 lignes : arrivée + dossard.</p>
-              <Button className="mt-4" size="sm" variant="outline" disabled={entriesLoading} onClick={printBackupSheet}><Printer />Imprimer / PDF</Button>
-            </article>}
+          <div className="cross-action-grid">
+            {exportOptions.map(option => <ActionTile key={option.value} title={option.title} description={option.description} icon={option.icon} onClick={() => setExportPanel(option.value)} />)}
           </div>
         </section>
       )}
@@ -1427,11 +1370,10 @@ export function CourseStep({
               { value: "arrival" as const, title: "Arrivée commune", detail: `${ranked.length} arrivées`, icon: ListOrdered },
               { value: "results" as const, title: "Classements", detail: `${gradeGroups.length} catégories`, icon: Medal },
               { value: "exports" as const, title: "Impression", detail: "PDF, Excel, visuels", icon: Printer },
-            ].map(item => <button key={item.value} type="button" className="cross-panel flex items-center gap-3 p-4 text-left transition hover:border-primary hover:shadow-sm" onClick={() => setCourseView(item.value)}><span className="cross-icon"><item.icon className="size-5" /></span><span className="min-w-0 flex-1"><span className="block font-bold">{item.title}</span><span className="mt-1 block text-xs text-slate-500">{item.detail}</span></span><ChevronRight className="size-4 text-slate-400" /></button>)}
+            ].map(item => <ActionTile key={item.value} title={item.title} description={item.detail} icon={item.icon} onClick={() => setCourseView(item.value)} />)}
           </div>}
 
           {(courseView === "results" || courseView === "arrival") && selectedHeat.status === "draft" && <p className="rounded-xl border border-dashed p-4 text-sm text-slate-500">Course prête à démarrer.</p>}
-          {courseView === "exports" && selectedHeat.status !== "finished" && <p className="text-sm text-slate-500">Les classements et visuels de cette course seront disponibles après sa clôture.</p>}
 
           {courseView === "manage" && selectedHeat.status === "running" && stations.length > 0 && (
             <section className="cross-panel p-5 sm:p-6">
@@ -1571,6 +1513,89 @@ export function CourseStep({
 
         </>
       )}
+
+      <Dialog open={exportPanel !== undefined} onOpenChange={open => { if (!open) setExportPanel(undefined); }}>
+        <DialogContent className="sm:max-w-lg" style={{ "--primary": branding.primaryColor, "--ring": branding.primaryColor } as CSSProperties}>
+          <DialogHeader>
+            <DialogTitle className="flex items-center gap-3">
+              {activeExportOption && <span className="cross-action-tile-icon" aria-hidden="true"><activeExportOption.icon /></span>}
+              {activeExportOption?.title}
+            </DialogTitle>
+            <DialogDescription>{activeExportOption?.description}</DialogDescription>
+          </DialogHeader>
+
+          {exportNeedsCourse && <div className="space-y-2">
+            <Label htmlFor="export-course">{exportPanel === "tv" ? "Course à gauche" : "Course"}</Label>
+            <Select value={selectedHeatId ?? ""} onValueChange={id => { if (id !== selectedHeatId) { setEntriesLoading(true); setSelectedHeatId(id); } }}>
+              <SelectTrigger id="export-course" className="w-full"><SelectValue placeholder="Choisir une course" /></SelectTrigger>
+              <SelectContent>{heats.map(heat => <SelectItem key={heat.id} value={heat.id}>{heat.name} · {heat.status === "finished" ? "Terminée" : heat.status === "running" ? "En cours" : "Prête"}</SelectItem>)}</SelectContent>
+            </Select>
+            {!heats.length && <p className="text-sm text-muted-foreground">Préparez une course dans l’onglet Courses.</p>}
+          </div>}
+
+          {exportPanel === "all" && <div className="space-y-3">
+            <div className="grid grid-cols-2 gap-3">
+              <Button variant="outline" className="h-16 justify-start gap-3 rounded-xl px-4" disabled={loading || printingDocument || !hasFinishedCourses} onClick={() => void printAllIndividuals()}><Printer className="size-5" />PDF complet</Button>
+              <Button variant="outline" className="h-16 justify-start gap-3 rounded-xl px-4" disabled={loading || !hasFinishedCourses} onClick={() => void downloadResults("individual", true)}><FileSpreadsheet className="size-5" />Excel complet</Button>
+            </div>
+            {!hasFinishedCourses && <p className="text-sm text-muted-foreground">Les classements seront disponibles après la fin d’une course.</p>}
+          </div>}
+
+          {exportPanel === "challenge" && <div className="space-y-4">
+            <div className="space-y-2">
+              <Label htmlFor="export-challenge-scope">Niveaux</Label>
+              <Select value={resolvedChallengeExportGrade} onValueChange={setChallengeExportGrade} disabled={!allOverallResults.length}>
+                <SelectTrigger id="export-challenge-scope" className="w-full"><SelectValue /></SelectTrigger>
+                <SelectContent><SelectItem value="all">Challenge complet · hors lycée</SelectItem>{challengeExportGrades.map(grade => <SelectItem key={grade} value={grade}>{gradeLabels[grade] ?? grade}</SelectItem>)}</SelectContent>
+              </Select>
+            </div>
+            <ExportFormats disabled={loading || printingDocument || challengeLoading || !!challengeError || !allOverallResults.length} onPdf={() => printOverall(resolvedChallengeExportGrade)} onExcel={() => void downloadResults("classes", true, resolvedChallengeExportGrade)} onPost={() => { setExportPanel(undefined); void social("classes", false, true, resolvedChallengeExportGrade); }} onStory={() => { setExportPanel(undefined); void social("classes", true, true, resolvedChallengeExportGrade); }} />
+            {challengeError ? <p role="alert" className="text-sm text-red-700">{challengeError}</p> : !challengeLoading && !allOverallResults.length && <p className="text-sm text-muted-foreground">Le challenge sera disponible après la fin d’une course avec challenge activé.</p>}
+          </div>}
+
+          {exportPanel === "individual" && selectedHeat?.status === "finished" && <div className="space-y-4">
+            <div className="space-y-2">
+              <Label htmlFor="export-category">Catégorie</Label>
+              <Select value={visibleCategory} onValueChange={setResultCategory} disabled={entriesLoading}>
+                <SelectTrigger id="export-category" className="w-full"><SelectValue /></SelectTrigger>
+                <SelectContent><SelectItem value="all">Toutes les catégories</SelectItem>{gradeGroups.map(group => <SelectItem key={group.category} value={group.category}>{group.category}</SelectItem>)}</SelectContent>
+              </Select>
+            </div>
+            <ExportFormats disabled={exportBusy} socialDisabled={selectedGroups.length !== 1} onPdf={printIndividual} onExcel={() => void downloadResults("individual")} onPost={() => { setExportPanel(undefined); void social("individual", false); }} onStory={() => { setExportPanel(undefined); void social("individual", true); }} />
+          </div>}
+
+          {exportPanel === "course-challenge" && selectedHeat?.status === "finished" && <div className="space-y-3">
+            <ExportFormats disabled={exportBusy || !classResults.length} onPdf={printClasses} onExcel={() => void downloadResults("classes")} onPost={() => { setExportPanel(undefined); void social("classes", false); }} onStory={() => { setExportPanel(undefined); void social("classes", true); }} />
+            {!entriesLoading && !classResults.length && <p className="text-sm text-muted-foreground">Aucun challenge disponible pour cette course.</p>}
+          </div>}
+
+          {exportPanel === "tv" && selectedHeat?.status === "finished" && <div className="space-y-4">
+            <section className="space-y-3 rounded-xl border p-4">
+              <h3 className="font-semibold">Classements complets par catégorie</h3>
+              <p className="text-xs text-muted-foreground">Deux catégories par écran, avec toutes les places.</p>
+              <Button variant="outline" className="w-full" disabled={exportBusy} onClick={() => { setExportPanel(undefined); void tvFullCategories(); }}><Monitor />Créer les PNG</Button>
+            </section>
+            <section className="space-y-3 rounded-xl border p-4">
+              <h3 className="font-semibold">Deux courses côte à côte · Top 20</h3>
+              <div className="space-y-2">
+                <Label htmlFor="export-tv-right">Course à droite</Label>
+                <Select value={resolvedTvSecondHeatId} onValueChange={setTvSecondHeatId}>
+                  <SelectTrigger id="export-tv-right" className="w-full"><SelectValue placeholder="Choisir une autre course" /></SelectTrigger>
+                  <SelectContent>{heats.filter(heat => heat.status === "finished" && heat.id !== selectedHeat.id).map(heat => <SelectItem key={heat.id} value={heat.id}>{heat.name}</SelectItem>)}</SelectContent>
+                </Select>
+              </div>
+              <Button variant="outline" className="w-full" disabled={exportBusy || !resolvedTvSecondHeatId} onClick={() => { setExportPanel(undefined); void tvDuo(); }}><Monitor />Créer le PNG</Button>
+            </section>
+          </div>}
+
+          {exportPanel === "backup" && selectedHeat && <div className="space-y-4">
+            <p className="rounded-xl bg-slate-50 p-4 text-sm text-muted-foreground">Une page A4 avec 30 lignes, le logo et les couleurs de l’événement.</p>
+            <Button className="w-full" disabled={exportBusy} onClick={printBackupSheet}><Printer />Télécharger le PDF</Button>
+          </div>}
+
+          {exportNeedsCourse && exportPanel !== "backup" && selectedHeat && selectedHeat.status !== "finished" && <p className="text-sm text-muted-foreground">Les classements et visuels seront disponibles après la clôture de cette course.</p>}
+        </DialogContent>
+      </Dialog>
 
       <AlertDialog open={!!finishCandidate} onOpenChange={open => { if (!open && !loading) setFinishCandidate(undefined); }}>
         <AlertDialogContent><AlertDialogHeader><AlertDialogTitle>Terminer « {finishCandidate?.name} » ?</AlertDialogTitle><AlertDialogDescription>Les élèves encore à courir seront déclarés non-finisseurs. Les arrivées déjà enregistrées sont conservées.</AlertDialogDescription></AlertDialogHeader><AlertDialogFooter><AlertDialogCancel disabled={loading}>Continuer la course</AlertDialogCancel><AlertDialogAction disabled={loading} className="bg-red-600 text-white hover:bg-red-700" onClick={e => { e.preventDefault(); void finish(finishCandidate); }}>{loading ? "Clôture…" : "Terminer la course"}</AlertDialogAction></AlertDialogFooter></AlertDialogContent>

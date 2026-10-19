@@ -39,6 +39,18 @@
   .cross-heading p { max-width: 48rem; margin-top: .25rem; color: var(--muted-foreground); font-size: .875rem; line-height: 1.5; }
   .cross-eyebrow { color: var(--primary); font-size: .6875rem; font-weight: 750; letter-spacing: .16em; text-transform: uppercase; }
   .cross-icon { display: grid; width: 2.75rem; height: 2.75rem; flex: 0 0 auto; place-items: center; border-radius: .875rem; color: var(--primary); background: color-mix(in srgb,var(--primary) 8%,white); }
+  .cross-action-grid { display: grid; grid-template-columns: minmax(0,1fr); gap: .875rem; }
+  .cross-action-tile { display: flex; flex-direction: column; justify-content: space-between; width: 100%; height: 10rem; padding: 1.125rem; border: 1px solid var(--border); border-radius: 1.25rem; background: white; color: var(--foreground); text-align: left; box-shadow: 0 3px 16px #17397005; transition: border-color .15s, box-shadow .15s, transform .15s; }
+  .cross-action-tile:hover { border-color: color-mix(in srgb,var(--primary) 65%,var(--foreground)); box-shadow: 0 8px 24px #1739700d; transform: translateY(-2px); }
+  .cross-action-tile:focus-visible { outline: 3px solid var(--foreground); outline-offset: 3px; }
+  .cross-action-tile-top { display: flex; align-items: center; justify-content: space-between; gap: .75rem; }
+  .cross-action-tile-icon { display: grid; width: 2.75rem; height: 2.75rem; flex: 0 0 auto; place-items: center; border: 1px solid color-mix(in srgb,var(--primary) 18%,white); border-radius: .875rem; background: color-mix(in srgb,var(--primary) 10%,white); }
+  .cross-action-tile-icon svg { width: 1.375rem; height: 1.375rem; stroke-width: 1.8; }
+  .cross-action-tile-arrow { width: 1.125rem; height: 1.125rem; color: #8a99b0; transition: color .15s; }
+  .cross-action-tile:hover .cross-action-tile-arrow { color: var(--foreground); }
+  .cross-action-tile-copy { display: block; min-width: 0; margin-top: .75rem; }
+  .cross-action-tile-title { display: block; font-size: 1rem; line-height: 1.35; font-weight: 750; letter-spacing: -.02em; }
+  .cross-action-tile-description { display: block; margin-top: .25rem; color: var(--muted-foreground); font-size: .75rem; line-height: 1.5; }
   .cross-actions { display: flex; flex-wrap: wrap; align-items: center; gap: .625rem; }
   .cross-table { width: 100%; border-collapse: collapse; text-align: left; font-size: .875rem; }
   .cross-table th { padding: .625rem .75rem; color: #63728a; font-size: .6875rem; font-weight: 700; letter-spacing: .05em; text-transform: uppercase; }
@@ -54,6 +66,9 @@
   .race-grid { background-image: radial-gradient(#ffffff24 1px,transparent 1px); background-size: 18px 18px; }
   .bib-canvas { container-type: inline-size; font-family: "DejaVu Sans",Arial,sans-serif; }
 }
+
+@media (min-width: 640px) { .cross-action-grid { grid-template-columns: repeat(2,minmax(0,1fr)); } }
+@media (min-width: 1024px) { .cross-action-grid { grid-template-columns: repeat(3,minmax(0,1fr)); } }
 
 .cross-steps[data-slot="tabs-list"] { grid-template-columns: repeat(3,minmax(0,1fr)); align-items: stretch; gap: .375rem; }
 .cross-step[data-slot="tabs-trigger"] { height: auto; min-height: 2.75rem; padding-block: .5rem; white-space: normal; line-height: 1.35; }

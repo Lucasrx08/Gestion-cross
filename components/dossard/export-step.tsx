@@ -1,7 +1,7 @@
 "use client";
 
 import { useMemo, useState } from "react";
-import { Download, FileDown, FileSpreadsheet, Printer, Search, ShieldAlert } from "lucide-react";
+import { ClipboardList, Download, FileDown, FileSpreadsheet, FolderOpen, Printer, Search, ShieldAlert, Ticket } from "lucide-react";
 import { toast } from "sonner";
 import { Badge } from "@/components/ui/badge";
 import { StepHeading } from "./step-heading";
@@ -123,13 +123,13 @@ export function ExportStep({ event, onChange, selectedIds, initialSingleId }: Ex
     <div className="space-y-6">
       <StepHeading icon={Printer} title="Dossards & impressions" description="Préparez vos dossards, vos listes et vos pochettes, ou exportez la base des élèves." />
       <Tabs value={exportTab} onValueChange={setExportTab} className="gap-5">
-        <TabsList aria-label="Supports et exports des dossards" className="grid h-auto w-full grid-cols-2 gap-1 rounded-xl bg-slate-100 p-1 sm:grid-cols-4 group-data-[orientation=horizontal]/tabs:h-auto">
+        <TabsList aria-label="Supports et exports des dossards" className="grid h-auto w-full grid-cols-2 gap-2 rounded-none bg-transparent p-0 sm:grid-cols-4 group-data-[orientation=horizontal]/tabs:h-auto">
           {[
-            {value:"bibs",label:"Dossards"},
-            {value:"roster",label:"Listes de secours"},
-            {value:"base",label:"Base élèves"},
-            {value:"pockets",label:"Pochettes"},
-          ].map(tab => <TabsTrigger key={tab.value} value={tab.value} className="h-auto min-h-11 whitespace-normal px-3 py-2 text-xs sm:text-sm font-semibold data-[state=active]:bg-primary data-[state=active]:text-primary-foreground">{tab.label}</TabsTrigger>)}
+            {value:"bibs",label:"Dossards",icon:Ticket},
+            {value:"roster",label:"Listes de secours",icon:ClipboardList},
+            {value:"base",label:"Base élèves",icon:FileSpreadsheet},
+            {value:"pockets",label:"Pochettes",icon:FolderOpen},
+          ].map(tab => <TabsTrigger key={tab.value} value={tab.value} className="h-16 gap-2 rounded-xl border border-border bg-white px-3 py-2 text-xs font-semibold whitespace-normal data-[state=active]:border-primary data-[state=active]:bg-primary/5 data-[state=active]:text-foreground sm:text-sm"><tab.icon className="size-5" />{tab.label}</TabsTrigger>)}
         </TabsList>
         <TabsContent value="bibs" className="space-y-5">
       {!ready && (

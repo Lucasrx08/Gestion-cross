@@ -4,7 +4,6 @@ import Image from "next/image";
 import { useEffect, useState, type CSSProperties } from "react";
 import {
   ArrowLeft,
-  ArrowRight,
   LayoutDashboard,
   Palette,
   CheckCircle2,
@@ -40,6 +39,7 @@ import {
 import { EventBrandingDialog } from "./event-branding-dialog";
 import { resolveEventBranding } from "@/lib/dossard/event-branding";
 import { CourseStep } from "./course-step";
+import { ActionTile } from "./action-tile";
 import { ExportStep } from "./export-step";
 import { LayoutStep } from "./layout-step";
 import { ParticipantsStep } from "./participants-step";
@@ -252,65 +252,13 @@ export function EventWorkspace({
               <h1 className="text-2xl font-bold">Vue d’ensemble</h1>
               <div className="flex gap-2 text-xs font-semibold"><span className="rounded-full bg-blue-50 px-3 py-2">{event.participants.length} élèves</span><span className="rounded-full bg-slate-100 px-3 py-2">{levels} niveaux</span>{blockers > 0 && <button className="rounded-full bg-amber-100 px-3 py-2 text-amber-900" onClick={() => setStep("verify")}>{blockers} contrôle(s)</button>}</div>
             </div>
-            <div className="mb-6 grid gap-3 md:grid-cols-2">
+            <div className="mb-6 grid gap-3 sm:grid-cols-2">
               {[
-                {
-                  value: "participants" as Step,
-                  icon: Users,
-                  title: "Élèves",
-                  detail:
-                    "Import Excel/CSV, classes, noms et numérotation. Vérifiez les niveaux avant le départ.",
-                  action: "Gérer les participants",
-                  color: "bg-blue-50 text-blue-700",
-                },
-                {
-                  value: "template" as Step,
-                  icon: LayoutTemplate,
-                  title: "Dossards",
-                  detail:
-                    "Ajoutez votre fond, disposez les textes, le numéro et les codes. Réutilisez vos modèles.",
-                  action: "Personnaliser les dossards",
-                  color: "bg-violet-50 text-violet-700",
-                },
-                {
-                  value: "verify" as Step,
-                  icon: ShieldCheck,
-                  title: "Contrôles",
-                  detail:
-                    "Contrôle des doublons, des dimensions et de la lisibilité. Deux dossards A5 par page A4.",
-                  action: "Contrôler les dossards",
-                  color: "bg-emerald-50 text-emerald-700",
-                },
-                {
-                  value: "course" as Step,
-                  icon: Flag,
-                  title: "Courses & résultats",
-                  detail:
-                    "Programme des courses, quatre postes d’arrivée, classements distincts par niveau et challenge.",
-                  action: "Ouvrir courses & résultats",
-                  color: "bg-amber-50 text-amber-700",
-                },
-              ].map((card) => (
-                <button
-                  key={card.value}
-                  type="button"
-                  className="cross-panel group flex items-center gap-4 p-5 text-left transition hover:border-blue-300 hover:shadow-md focus-visible:outline-2 focus-visible:outline-blue-600"
-                  onClick={() => setStep(card.value)}
-                >
-                  <span
-                    className={`grid size-12 shrink-0 place-items-center rounded-2xl ${card.color}`}
-                  >
-                    <card.icon className="size-6" />
-                  </span>
-                  <div>
-                    <h2 className="text-lg font-bold">{card.title}</h2>
-                    <span className="mt-2 inline-flex items-center gap-2 text-sm font-medium text-primary">
-                      {card.action}
-                      <ArrowRight className="size-4 transition group-hover:translate-x-1" />
-                    </span>
-                  </div>
-                </button>
-              ))}
+                { value: "participants" as Step, icon: Users, title: "Élèves", description: "Participants, classes et numérotation" },
+                { value: "template" as Step, icon: LayoutTemplate, title: "Dossards", description: "Fond et mise en page personnalisés" },
+                { value: "verify" as Step, icon: ShieldCheck, title: "Contrôles", description: "Vérification des listes et des dossards" },
+                { value: "course" as Step, icon: Flag, title: "Courses & résultats", description: "Programme, arrivées et classements" },
+              ].map(card => <ActionTile key={card.value} title={card.title} description={card.description} icon={card.icon} onClick={() => setStep(card.value)} />)}
             </div>
             <section className="cross-panel mb-6 flex flex-wrap items-center gap-5 p-5 sm:p-6">
               {branding.logoDataUrl && <Image src={branding.logoDataUrl} alt="Logo de l’événement" width={88} height={88} unoptimized className="max-h-22 w-22 object-contain" />}

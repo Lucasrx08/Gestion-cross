@@ -3,40 +3,40 @@
     {
       "path": "404.html",
       "bytes": 8550,
-      "sha256": "dc7c2e488c517eab35dc5a33005c5b40a73183c08a2ff56b8a95c0ed29a87e00"
+      "sha256": "5fc53928fa06c7da375f46e7c17116649d40adf5caa489b3fe99ee5e4d6e0a41"
     },
     {
       "path": "404/index.html",
       "bytes": 8550,
-      "sha256": "dc7c2e488c517eab35dc5a33005c5b40a73183c08a2ff56b8a95c0ed29a87e00"
+      "sha256": "5fc53928fa06c7da375f46e7c17116649d40adf5caa489b3fe99ee5e4d6e0a41"
     },
     {
       "path": "__next.__PAGE__.txt",
       "bytes": 4399,
-      "sha256": "199bf267ff393b89bfdf74a908eb9ed2d850f36a5b77cac72c584725e2c53551"
+      "sha256": "63c2550ec7d482225ec8f18a06df2a3e170e681a879619f1bdc0b19576a6b586"
     },
     {
       "path": "__next._full.txt",
       "bytes": 5008,
-      "sha256": "77b08815f7f20d799bfb4bc44493a9c2db07fbe2e756dcd0acb0833bfa670ccf"
+      "sha256": "262ff20860b943bdd8edcf42ca683d1234541f12a86fa4cd54634547f07a0a9b"
     },
     {
       "path": "__next._tree.txt",
       "bytes": 275,
-      "sha256": "f6aa8fbddb663cc38c236051fe815dd7fb20cf4c5a4c64e84e06684c7fee67aa"
+      "sha256": "3047ffec73105c6d828976f2943dd35b72273bb08c421a7f71b08bd9d8110e33"
     },
     {
-      "path": "_next/static/DeAK-B5VyEcfPWFN_UUiA/_buildManifest.js",
+      "path": "_next/static/9LLQqpjpuYbAcOaU4LkiJ/_buildManifest.js",
       "bytes": 219,
       "sha256": "9476e0afd3f9da68a64e6ec58631191fd3eaca62c9f5a377e7517fe9a89e59ea"
     },
     {
-      "path": "_next/static/DeAK-B5VyEcfPWFN_UUiA/_clientMiddlewareManifest.js",
+      "path": "_next/static/9LLQqpjpuYbAcOaU4LkiJ/_clientMiddlewareManifest.js",
       "bytes": 96,
       "sha256": "5483e3295dc35dfe29ea932efc85341c916f10ff78ff5b0e965e003710893a4a"
     },
     {
-      "path": "_next/static/DeAK-B5VyEcfPWFN_UUiA/_ssgManifest.js",
+      "path": "_next/static/9LLQqpjpuYbAcOaU4LkiJ/_ssgManifest.js",
       "bytes": 80,
       "sha256": "678f6ce2cb80b1fe72fc67e7412be6e2ab6ada083111b64f7c40d35e3cba5e00"
     },
@@ -81,11 +81,6 @@
       "sha256": "26f46b1aa79cdd7f816b9cc669fd465f8fc336d1a33afbb7110124651f1d22fa"
     },
     {
-      "path": "_next/static/chunks/1goq3d88e6y-p.js",
-      "bytes": 518156,
-      "sha256": "3479d934169d6313a70f9503910c7da0ec414af4c8ea1f9b001bf33be0f18148"
-    },
-    {
       "path": "_next/static/chunks/1qsy3vo30w_w2.js",
       "bytes": 1132777,
       "sha256": "80906a954987429a1e8b1cd1587c3726d7144328e99f7087c5c9964d348be22a"
@@ -96,14 +91,19 @@
       "sha256": "7a57d8bbd6b90e9d1b6048f0b06286f26f4963876ec8c3131faa0dff2afc87c8"
     },
     {
-      "path": "_next/static/chunks/21-jyx3rpfrgr.css",
-      "bytes": 178226,
-      "sha256": "9f5839b1225047534ef9a6ac9860b452c33ea38f356b3d462d04778086999396"
-    },
-    {
       "path": "_next/static/chunks/2_kcnb7v59d-_.js",
       "bytes": 4557,
       "sha256": "e711b1437fca3107633eeccada6be35cd6128b59ec0ad1f4d098d773291d306d"
+    },
+    {
+      "path": "_next/static/chunks/2b_0oj4-rhjd_.js",
+      "bytes": 521166,
+      "sha256": "0de7d216d566e001e1469a0f8dd24bfb7084ac0ee5b85182cc165836a8f48233"
+    },
+    {
+      "path": "_next/static/chunks/3nyhjpd76-w1p.css",
+      "bytes": 179576,
+      "sha256": "099c48bcac72390605f6526813eba1bb6c51d4cb45ea417143478637afadc34a"
     },
     {
       "path": "_next/static/chunks/turbopack-0czv5369xnq05.js",
@@ -123,27 +123,27 @@
     {
       "path": "_not-found/__next._full.txt",
       "bytes": 5501,
-      "sha256": "2a1359fcae8a5810d21fe95b2f83e69ae3ab6b248cf25a31b9a9cf1d3ee3779b"
+      "sha256": "87b9ab0da894bfff57ba894bcdf01218d4a15879f34f3220e79e96dc8ff89b57"
     },
     {
       "path": "_not-found/__next._not-found.__PAGE__.txt",
       "bytes": 4576,
-      "sha256": "c80f41b3e9543bf566afe19c17e17f2e8a4f73a84779f333dce1059f00af4960"
+      "sha256": "5f7daa249c22036400ce02c1e9a86b054ea86f263c089ddd3d25c88f62e73ca9"
     },
     {
       "path": "_not-found/__next._tree.txt",
       "bytes": 341,
-      "sha256": "a1aa48adb847b11f767ed6a51b972c7dc5c5a0a3d836c3a6e8cfb13211602e0a"
+      "sha256": "0b2ac88f8889dcebb53443bd41ae17521d8b16f8a059270a7bc353060d1696fd"
     },
     {
       "path": "_not-found/index.html",
       "bytes": 8550,
-      "sha256": "dc7c2e488c517eab35dc5a33005c5b40a73183c08a2ff56b8a95c0ed29a87e00"
+      "sha256": "5fc53928fa06c7da375f46e7c17116649d40adf5caa489b3fe99ee5e4d6e0a41"
     },
     {
       "path": "_not-found/index.txt",
       "bytes": 5501,
-      "sha256": "2a1359fcae8a5810d21fe95b2f83e69ae3ab6b248cf25a31b9a9cf1d3ee3779b"
+      "sha256": "87b9ab0da894bfff57ba894bcdf01218d4a15879f34f3220e79e96dc8ff89b57"
     },
     {
       "path": "favicon.svg",
@@ -178,12 +178,12 @@
     {
       "path": "index.html",
       "bytes": 8062,
-      "sha256": "516ed3febfd7db7ff43e51ad852242b44cbd2e5974621d466f3d25692e7e416d"
+      "sha256": "74c7a8953e4930694f203a560643d6995cdea34426073a55a5e30c01f21119d1"
     },
     {
       "path": "index.txt",
       "bytes": 5008,
-      "sha256": "77b08815f7f20d799bfb4bc44493a9c2db07fbe2e756dcd0acb0833bfa670ccf"
+      "sha256": "262ff20860b943bdd8edcf42ca683d1234541f12a86fa4cd54634547f07a0a9b"
     },
     {
       "path": "logo-bon-sauveur-cross.png",
